@@ -1,0 +1,19 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CardNav from '../components/shared/CardNav.astro';
+import Projects from '../components/projects/Projects.astro';
+import SectionDivider from '../components/shared/SectionDivider.astro';
+import Footer from '../components/shared/Footer.astro';
+---
+
+<Layout title="Work — Sahil Pandey" description="Selected projects and case studies by Sahil Pandey.">
+  <div class="page-wrapper bg-[#050314] text-white">
+    <main class="main-wrapper">
+      <CardNav />
+      <div aria-hidden="true" class="h-36"></div>
+      <Projects showViewAll={false} />
+      <SectionDivider />
+      <Footer />
+    </main>
+  </div>
+</Layout>

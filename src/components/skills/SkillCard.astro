@@ -1,0 +1,39 @@
+---
+import type { SkillCard as SkillCardData } from '../../data/skillCards';
+
+interface Props {
+  card: SkillCardData;
+}
+
+const { card } = Astro.props;
+---
+
+<div
+  class="flex w-full flex-col items-start gap-5 rounded-[32px] bg-[#1e1e1e] px-5 py-6"
+>
+  {(card.icons || card.chips) && (
+    <div class="flex w-full flex-wrap items-center gap-3">
+      {card.icons?.map((icon) => (
+        <div class="flex size-[80px] shrink-0 items-center justify-center rounded-full bg-[#141414] p-5">
+          <img src={icon.src} alt={icon.alt} class="size-full object-contain" loading="lazy" decoding="async" />
+        </div>
+      ))}
+      {card.chips?.map((chip) => (
+        <div class="flex h-[44px] shrink-0 items-center justify-center rounded-full bg-[#141414] px-5">
+          <p class="font-geist whitespace-nowrap text-sm font-light text-white">
+            {chip}
+          </p>
+        </div>
+      ))}
+    </div>
+  )}
+
+  <div class="flex flex-col items-start gap-2">
+    <p class="font-geist text-lg font-medium text-white">
+      {card.title}
+    </p>
+    <p class="font-geist text-sm font-light text-neutral-400">
+      {card.description}
+    </p>
+  </div>
+</div>

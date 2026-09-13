@@ -1,0 +1,46 @@
+---
+import Container from '../shared/Container.astro';
+import DitheringBackground from '../shared/DitheringBackground.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+import type { DitheringOptions } from '../../scripts/dithering';
+import { ACCENT_BLUE } from '../../lib/colors';
+
+// Blue palette + softer dithering: fine dot texture that reads as a soft
+// gradient instead of the packaged preset's harsh static. No `blur` — the
+// shader's blur option resamples the shade 5x per pixel, which is expensive
+// for a full-viewport-height background; scale/paramA/detail get a soft
+// look without paying that cost every frame.
+const ditheringOptions: DitheringOptions = {
+  colors: ['#080430', '#0C0648', '#1E3A8A', ACCENT_BLUE],
+  scale: 0.9,
+  paramA: 0.3,
+  intensity: 0.3,
+  detail: 1.4,
+  grain: 0.01,
+};
+---
+
+<section class="section-hero">
+  <div class="hero-shell relative flex h-screen w-full flex-col items-start justify-end overflow-clip">
+    <div aria-hidden class="pointer-events-none absolute inset-0 overflow-hidden opacity-45">
+      <DitheringBackground id="hero-dithering" class="size-full" options={ditheringOptions} />
+    </div>
+
+    <Container class="relative flex flex-1 items-end gap-[max(12px,0.694vw)] py-[max(12px,1.389vw)]">
+      <div>
+        <Eyebrow>Portfolio — 2026</Eyebrow>
+        <h1 class="heading-style-h1 shrink-0 leading-none">
+          Creative Webflow Developer
+        </h1>
+        <!-- <div class="flex justify-end items-center gap-15">
+          <p class="font-display max-w-lg text-xl leading-tight tracking-[-0.64px] text-white/80">
+            Lorem ipsum dolor sit amet, consectetur
+            adipiscing elit, sed do eiusmod tempor
+            incididunt ut labore et dolore magna aliqua.
+            Ut enim ad minim veniam,
+          </p>
+        </div> -->
+      </div>
+    </Container>
+  </div>
+</section>

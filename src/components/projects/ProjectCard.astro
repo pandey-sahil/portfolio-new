@@ -1,0 +1,26 @@
+---
+interface Props {
+  name: string;
+  stack: string;
+  image: string;
+}
+
+const { name, stack, image } = Astro.props;
+---
+
+<article class="relative flex aspect-square flex-col items-center justify-end overflow-clip rounded-[8px] p-[10px]">
+  <div aria-hidden class="pointer-events-none absolute inset-0">
+    <img src={image} alt="" loading="lazy" decoding="async" class="absolute size-full max-w-none object-cover" />
+    <div class="project-card-gradient absolute inset-0"></div>
+  </div>
+  <div class="relative flex w-full flex-col items-start justify-end rounded-[6px] bg-[rgba(5,3,20,0.22)] p-3 backdrop-blur-[25px]">
+    <h3 class="heading-style-h5 font-geist font-semibold text-slate-50">{name}</h3>
+    <p class="font-geist text-xl font-semibold leading-relaxed tracking-tight text-slate-50">{stack}</p>
+  </div>
+</article>
+
+<style>
+  .project-card-gradient {
+    background-image: linear-gradient(180deg, transparent 66%, rgb(0 0 0 / 40%) 100%);
+  }
+</style>

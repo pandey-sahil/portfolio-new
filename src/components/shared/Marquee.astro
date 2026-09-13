@@ -1,0 +1,46 @@
+---
+interface Props {
+  reverse?: boolean;
+}
+
+const { reverse = false } = Astro.props;
+---
+
+<div class="marquee-wrap" data-marquee>
+  <div class:list={["marquee-track", { "marquee-reverse": reverse }]}>
+    <ul class="marquee-list">
+      {Array.from({ length: 3 }).map(() => (
+        <li class="marquee-item fluid-ghost-text"><slot /></li>
+      ))}
+    </ul>
+    <ul class="marquee-list" aria-hidden="true">
+      {Array.from({ length: 3 }).map(() => (
+        <li class="marquee-item fluid-ghost-text"><slot /></li>
+      ))}
+    </ul>
+  </div>
+</div>
+
+<script>
+  function syncMarqueeHeight(root: HTMLElement) {
+    const wrap = root.querySelector<HTMLElement>(".marquee-wrap");
+    const track = root.querySelector<HTMLElement>(".marquee-track");
+    if (!wrap || !track) return;
+
+    const height = track.getBoundingClientRect().height;
+    wrap.style.height = `${height}px`;
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-marquee]").forEach((root) => {
+    const track = root.querySelector<HTMLElement>(".marquee-track");
+    if (!track) return;
+
+    const sync = () => syncMarqueeHeight(root);
+    const resizeObserver = new ResizeObserver(sync);
+
+    resizeObserver.observe(track);
+    sync();
+
+    document.fonts?.ready.then(sync);
+  });
+</script>

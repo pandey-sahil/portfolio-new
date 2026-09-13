@@ -1,0 +1,142 @@
+---
+import Container from '../shared/Container.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+
+type Cell = { icon: string; label: string } | { ghost: true; w: string };
+
+const ghost = (w: string): Cell => ({ ghost: true, w });
+const icon = (icon: string, label: string): Cell => ({ icon, label });
+
+// Hand-placed rather than generated: a few real tool pills scattered through
+// mostly-empty placeholder pills, alternating row offsets so it reads as a
+// loose, staggered wall rather than a repeating grid.
+const rows: Cell[][] = [
+  [
+    ghost('w-20'),
+    icon('/images/skills/github-group.svg', 'GitHub'),
+    ghost('w-16'),
+    ghost('w-28'),
+    ghost('w-20'),
+    icon('/images/skills/python-original.svg', 'Python'),
+    ghost('w-24'),
+    ghost('w-16'),
+  ],
+  [
+    ghost('w-24'),
+    ghost('w-16'),
+    icon('/images/skills/figma-original.svg', 'Figma'),
+    ghost('w-20'),
+    ghost('w-16'),
+    ghost('w-24'),
+    icon('/images/skills/sass-original.svg', 'Sass'),
+    ghost('w-20'),
+  ],
+  [
+    ghost('w-16'),
+    ghost('w-28'),
+    ghost('w-20'),
+    icon('/images/skills/docker-plain.svg', 'Docker'),
+    ghost('w-24'),
+    ghost('w-16'),
+    icon('/images/skills/postgresql-plain.svg', 'PostgreSQL'),
+    ghost('w-20'),
+  ],
+  [
+    ghost('w-20'),
+    icon('/images/skills/nodejs-plain-wordmark.svg', 'Node.js'),
+    ghost('w-16'),
+    ghost('w-28'),
+    ghost('w-16'),
+    icon('/images/skills/mongodb-plain-wordmark.svg', 'MongoDB'),
+    ghost('w-20'),
+    ghost('w-24'),
+  ],
+  [
+    ghost('w-24'),
+    ghost('w-16'),
+    ghost('w-20'),
+    icon('/images/skills/tailwindcss-plain.svg', 'Tailwind CSS'),
+    ghost('w-16'),
+    ghost('w-28'),
+    icon('/images/skills/git-plain.svg', 'Git'),
+    ghost('w-20'),
+  ],
+  [
+    ghost('w-16'),
+    icon('/images/skills/vercel.svg', 'Vercel'),
+    ghost('w-24'),
+    ghost('w-20'),
+    ghost('w-16'),
+    icon('/images/skills/jest-plain.svg', 'Jest'),
+    ghost('w-28'),
+    ghost('w-16'),
+  ],
+  [
+    ghost('w-20'),
+    ghost('w-16'),
+    ghost('w-24'),
+    icon('/images/skills/framer-motion.svg', 'Framer Motion'),
+    ghost('w-16'),
+    ghost('w-20'),
+    icon('/images/skills/firebase-plain.svg', 'Firebase'),
+    ghost('w-24'),
+  ],
+  [
+    ghost('w-24'),
+    icon('/images/skills/go.svg', 'Go'),
+    ghost('w-16'),
+    ghost('w-28'),
+    ghost('w-20'),
+    icon('/images/skills/postman.svg', 'Postman'),
+    ghost('w-16'),
+    ghost('w-20'),
+  ],
+];
+---
+
+<section class="section-tools relative overflow-hidden">
+  <div class="tools-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
+  <Container class="padding-section-large relative flex flex-col items-center gap-[max(32px,3.333vw)] text-center">
+    <div>
+      <Eyebrow>Tools I Use</Eyebrow>
+      <h2 class="heading-style-h2 leading-none">Powered By</h2>
+    </div>
+
+    <div class="flex w-full flex-col gap-3">
+      {rows.map((row, i) => (
+        <div class:list={['flex flex-wrap items-center justify-center gap-3', i % 2 === 1 && 'sm:ml-8']}>
+          {row.map((cell) =>
+            'ghost' in cell ? (
+              <span class:list={['tool-ghost h-11 rounded-full', cell.w]} />
+            ) : (
+              <span class="tool-pill flex h-11 shrink-0 items-center gap-2 rounded-full px-4">
+                <img src={cell.icon} alt="" class="size-5 object-contain" loading="lazy" decoding="async" />
+                <span class="font-geist text-sm font-medium text-white whitespace-nowrap">{cell.label}</span>
+              </span>
+            )
+          )}
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>
+
+<style>
+  .tools-dots {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 90%);
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 40%, transparent 90%);
+  }
+
+  .tool-ghost {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .tool-pill {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  }
+</style>

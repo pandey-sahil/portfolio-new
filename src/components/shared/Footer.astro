@@ -1,0 +1,92 @@
+---
+import Container from './Container.astro';
+import Logo from './Logo.astro';
+import Link from './Link.astro';
+import Eyebrow from './Eyebrow.astro';
+import DitheringBackground from './DitheringBackground.astro';
+import type { DitheringOptions } from '../../scripts/dithering';
+import { ACCENT_BLUE } from '../../lib/colors';
+
+const sitemapLinks = [
+  { label: 'Home', href: '/' },
+  { label: 'Work', href: '/work' },
+  { label: 'About', href: '/about' },
+  { label: 'Contact', href: '/contact' },
+];
+
+const socialLinks = [
+  { label: 'Instagram', href: 'https://instagram.com/' },
+  { label: 'LinkedIn', href: 'https://linkedin.com/in/' },
+  { label: 'Twitter', href: 'https://x.com/' },
+  { label: 'GitHub', href: 'https://github.com/' },
+];
+
+// Blue palette + softer dithering: fine dot texture that reads as a soft
+// gradient instead of the packaged preset's harsh static. No `blur` — the
+// shader's blur option resamples the shade 5x per pixel, which is expensive
+// for a full-viewport-height background; scale/paramA/detail get a soft
+// look without paying that cost every frame.
+const ditheringOptions: DitheringOptions = {
+  colors: ['#080430', '#0C0648', '#1E3A8A', ACCENT_BLUE],
+  scale: 0.9,
+  paramA: 0.3,
+  intensity: 0.3,
+  detail: 1.4,
+  grain: 0.01,
+};
+---
+
+<section class="section-footer">
+  <div class="relative flex flex-col items-center overflow-clip">
+    <div aria-hidden class="pointer-events-none absolute inset-0 overflow-hidden opacity-45">
+      <DitheringBackground id="footer-dithering" class="size-full" options={ditheringOptions} />
+    </div>
+    <div class="w-full">
+      <Container class="padding-section-medium relative flex flex-col gap-[max(24px,2.222vw)]">
+        <div class="grid w-full grid-cols-1 gap-10 sm:grid-cols-[1fr_0.5fr_0.5fr]">
+          <a href="/" aria-label="Go to home page" class="flex w-full items-center gap-3">
+            <span class="font-heading shrink-0 text-4xl leading-none font-bold text-accent-blue sm:text-5xl" aria-hidden="true">{'{'}</span>
+            <Logo class="h-auto w-full text-white" />
+            <span class="font-heading shrink-0 text-4xl leading-none font-bold text-accent-blue sm:text-5xl" aria-hidden="true">{'}'}</span>
+          </a>
+
+          <nav class="flex flex-col items-start gap-2">
+            <Eyebrow class="mb-0!">Sitemap</Eyebrow>
+            {sitemapLinks.map((link) => (
+              <Link
+                href={link.href}
+                class="font-geist text-base font-medium text-white transition-opacity hover:opacity-70"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          <nav class="flex flex-col items-start gap-2">
+            <Eyebrow class="mb-0!">Socials</Eyebrow>
+            {socialLinks.map((link) => (
+              <Link
+                href={link.href}
+                target="_blank"
+                rel="noopener"
+                class="font-geist text-base font-medium text-white transition-opacity hover:opacity-70"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <div class="flex w-full flex-col items-start justify-between gap-4 border-t border-white/15 pt-4 sm:flex-row sm:items-center">
+          <p class="font-geist text-sm tracking-tight text-slate-300">Copyright ©2026 Sahil Pandey</p>
+          <Link
+            href="#"
+            class="font-geist text-sm font-medium tracking-tight text-white transition-opacity hover:opacity-70"
+          >
+            Back To Top &uarr;
+          </Link>
+        </div>
+      </Container>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,356 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Uncut Sans Variable";
+  src: url("/fonts/UncutSans-Variable.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-ring: var(--ring);
+  --color-accent-blue: var(--accent-blue);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+:root {
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --muted: #78716c;
+  --accent: #dc2626;
+  /* Shared with the hero/footer dithering palette (#0C0648 → #38BDF8) so any
+     shadcn-style component (bg-card, ring-ring, …) themes itself to match. */
+  --card: #0c0648;
+  --card-foreground: #fafaf9;
+  --ring: #38bdf8;
+  /* The site's one blue accent — dithering highlight, eyebrow braces, focus
+     rings. Aliased to --ring (same value) so there's a single hex literal to
+     change; use `accent-blue` (Tailwind: text-accent-blue, border-accent-blue,
+     bg-accent-blue) or `var(--accent-blue)` in plain CSS instead of re-typing
+     #38bdf8. See src/lib/colors.ts for the JS/TS-side equivalent (shader
+     `colors` arrays can't reference a CSS var). */
+  --accent-blue: var(--ring);
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+  --font-heading: "Uncut Sans Variable", sans-serif;
+  --font-geist: "Geist", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #fafaf9;
+    --muted: #78716c;
+    --accent: #f87171;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}
+
+
+
+/*
+  Fluid, uncapped scaling: every desktop dimension below is expressed as a
+  percentage of viewport width, calibrated against the 1440px design frame
+  (value = designPx / 1440 * 100vw). max(minPx, Nvw) keeps a usable floor on
+  small screens while letting the layout scale proportionally with no upper
+  cap, so the page reads identically (same ratios) at 1440px, 1920px, 2560px…
+  instead of jumping between fixed breakpoint sizes.
+*/
+
+/* ---------------------------------- */
+/* Heading styles                     */
+/* ---------------------------------- */
+
+.heading-style-h1,
+.heading-style-h2,
+.heading-style-h3,
+.heading-style-h4,
+.heading-style-h5,
+.heading-style-h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.heading-style-h1 {
+  font-size: clamp(2.64rem, 9.386vw, 8.448rem); /* 135px @ 1440, capped, +10% */
+  letter-spacing: -0.04em;
+}
+
+.heading-style-h2 {
+  font-size: clamp(1.92rem, 5.333vw, 4.8rem);
+  letter-spacing: -0.03em;
+}
+
+.heading-style-h3 {
+  font-size: clamp(1.44rem, 3.2vw, 2.88rem);
+  letter-spacing: -0.02em;
+}
+
+.heading-style-h4 {
+  font-size: clamp(1.08rem, 2.133vw, 1.92rem);
+  letter-spacing: 0.02em;
+}
+
+.heading-style-h5 {
+  font-size: clamp(0.96rem, 1.333vw, 1.2rem);
+  letter-spacing: -0.02em;
+}
+
+.heading-style-h6 {
+  font-size: clamp(0.84rem, 1.066vw, 0.96rem);
+  letter-spacing: -0.01em;
+}
+
+.font-geist {
+  font-family: var(--font-geist);
+}
+
+/* ---------------------------------- */
+/* Fluid section chrome               */
+/* ---------------------------------- */
+
+.padding-section-large {
+  padding-block: 5rem;
+}
+
+.padding-section-medium {
+  padding-block: 3.75rem;
+}
+
+.padding-section-none {
+  padding-block: 0;
+}
+
+/* ---------------------------------- */
+/* Container                          */
+/* ---------------------------------- */
+
+.container {
+  width: 100%;
+  max-width: 90rem; /* 1440px */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 5%;
+  padding-right: 5%;
+  box-sizing: border-box;
+}
+
+/* ---------------------------------- */
+/* Section divider                    */
+/* ---------------------------------- */
+
+.section-divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hero-shell {
+  padding-top: max(10rem, 12.5vw); /* 180px @ 1440 */
+  padding-bottom: 5rem;
+}
+
+.fluid-ghost-text {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.06);
+  font-size: max(2.25rem, 10.694vw); /* 154px @ 1440 */
+  letter-spacing: -0.02em;
+}
+
+/* Uncapped edge-to-edge wordmark — scales with viewport width like the rest
+   of the fluid type scale, but well past heading-style-h1's clamp ceiling
+   since it's meant to span the container (hero name, footer logo lockup). */
+.fluid-display-xl {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: max(3.5rem, 11.111vw); /* 160px @ 1440 */
+  letter-spacing: -0.03em;
+}
+
+/* ---------------------------------- */
+/* Button                             */
+/* ---------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-geist);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition:
+    opacity 0.3s ease,
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.btn-primary {
+  background-color: #ffffff;
+  color: #0f0e0e;
+}
+
+.btn-primary:hover {
+  opacity: 0.85;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-md {
+  padding: 0.625rem 1.25rem;
+  font-size: max(0.8125rem, 1.111vw); /* 16px @ 1440 */
+  border-radius: 0.625rem;
+}
+
+/* ---------------------------------- */
+/* Split-text hover reveal            */
+/* ---------------------------------- */
+
+/* Each letter is a small overflow-hidden window; the visible glyph and a
+   `content: attr()` duplicate sit stacked inside it. Hover slides the window
+   up by its own height so the duplicate rides in from the bottom as the real
+   letter exits the top — staggered per letter via --i. See split-hover.ts. */
+.split-hover .split-text {
+  display: inline-flex;
+}
+
+.split-hover .split-char {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.split-hover .split-char-inner {
+  position: relative;
+  display: inline-block;
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--i, 0) * 26ms);
+}
+
+.split-hover .split-char-inner::after {
+  content: attr(data-letter);
+  position: absolute;
+  top: 100%;
+  left: 0;
+}
+
+.split-hover:hover .split-char-inner,
+.split-hover:focus-visible .split-char-inner {
+  transform: translateY(-100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-hover .split-char-inner {
+    transition: none;
+  }
+}
+
+.btn-lg {
+  padding: 0.875rem 1.75rem;
+  font-size: max(0.875rem, 1.25vw); /* 18px @ 1440 */
+  border-radius: 0.75rem;
+}
+
+/* ---------------------------------- */
+/* Grain overlay                      */
+/* ---------------------------------- */
+
+#grain-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  pointer-events: none;
+  z-index: 999;
+    mix-blend-mode: overlay;
+
+}
+
+.fluid-cta-icon {
+  width: max(64px, 9.861vw); /* 142px @ 1440 */
+  height: max(64px, 9.861vw);
+}
+
+.fluid-nav {
+  gap: max(20px, 3.333vw); /* 48px @ 1440 */
+  font-size: max(14px, 1.389vw); /* 20px @ 1440 */
+}
+
+/* ---------------------------------- */
+/* Marquee (seamless duplicate-list)  */
+/* ---------------------------------- */
+
+.marquee-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.marquee-track {
+  width: max-content;
+  display: flex;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  will-change: transform;
+  animation: marquee-scroll 40s linear infinite;
+}
+
+.marquee-track.marquee-reverse {
+  animation-direction: reverse;
+}
+
+.marquee-list {
+  width: max-content;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.marquee-item {
+  flex: 0 0 auto;
+  width: max-content;
+}
+
+@keyframes marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+

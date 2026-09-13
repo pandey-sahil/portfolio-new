@@ -1,0 +1,21 @@
+---
+import Container from '../shared/Container.astro';
+import SkillCard from './SkillCard.astro';
+import { skillCards } from '../../data/skillCards';
+import Eyebrow from '../shared/Eyebrow.astro';
+---
+
+<section class="section-skills">
+  <Container class="padding-section-large flex flex-col gap-[max(32px,4.444vw)] overflow-clip">
+    <div>
+      <Eyebrow>Tools &amp; Technologies</Eyebrow>
+      <h2 class="heading-style-h2 leading-none">Skills</h2>
+    </div>
+
+    <div class="grid w-full grid-cols-1 items-start gap-[max(16px,1.389vw)] md:grid-cols-2 lg:grid-cols-3">
+      {skillCards.map((card) => (
+        <SkillCard card={card} />
+      ))}
+    </div>
+  </Container>
+</section>

@@ -1,0 +1,17 @@
+---
+---
+
+<div id="grain-overlay" class="grain" aria-hidden="true"></div>
+
+<script>
+  import { createGrainCanvas } from '../../scripts/grain-canvas';
+
+  const container = document.getElementById('grain-overlay');
+  if (container) {
+    createGrainCanvas(container, {
+      grainScale: 300,
+      speed: 0.05,
+      opacity: 0.05,
+    });
+  }
+</script>

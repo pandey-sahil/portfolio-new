@@ -1,0 +1,62 @@
+---
+import Container from '../shared/Container.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+
+interface ExperienceItem {
+  role: string;
+  company: string;
+  period: string;
+  description: string;
+}
+
+const experience: ExperienceItem[] = [
+  {
+    role: 'Role Title',
+    company: 'Company Name',
+    period: '20XX — Present',
+    description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  },
+  {
+    role: 'Role Title',
+    company: 'Company Name',
+    period: '20XX — 20XX',
+    description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  },
+  {
+    role: 'Role Title',
+    company: 'Company Name',
+    period: '20XX — 20XX',
+    description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  },
+];
+---
+
+<section class="section-experience">
+  <Container class="padding-section-large flex flex-col gap-[max(32px,2.778vw)]">
+    <div>
+      <Eyebrow>Experience</Eyebrow>
+      <h2 class="heading-style-h2 leading-none">Where I've worked</h2>
+    </div>
+
+    <div class="flex w-full flex-col items-start border-t border-white/10">
+      {experience.map((item) => (
+        <div
+          class="flex w-full flex-col items-start gap-[max(8px,0.833vw)] border-b border-white/10 py-[max(20px,1.944vw)] sm:flex-row sm:items-baseline sm:justify-between"
+        >
+          <div class="flex max-w-2xl flex-col items-start gap-1.5">
+            <h3 class="heading-style-h4 leading-none">{item.role}</h3>
+            <p class="font-geist text-sm text-white/60">
+              {item.company}
+            </p>
+            <p class="font-geist text-xs text-white/50">
+              {item.description}
+            </p>
+          </div>
+          <span class="font-geist shrink-0 text-xs text-white/50">
+            {item.period}
+          </span>
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

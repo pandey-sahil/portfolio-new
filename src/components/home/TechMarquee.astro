@@ -1,0 +1,23 @@
+---
+import Marquee from '../shared/Marquee.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+
+const ghostLine1 = 'TECHNOLOGIES PERFOMANCES USER EXPERIENCE  ';
+const ghostLine2 = 'EXPERIENCE TECHNOLOGIES PERFOMANCES USER EXPERIENCE  ';
+---
+
+<section class="section-marquee">
+  <div class="padding-section-medium relative flex flex-col overflow-clip">
+    <Marquee>{ghostLine1}</Marquee>
+    <Marquee reverse>{ghostLine2}</Marquee>
+    <div class="pointer-events-none absolute left-1/2 top-1/2 flex max-w-lg -translate-1/2 flex-col items-center gap-3 text-center">
+      <Eyebrow>What I Work With</Eyebrow>
+      <p class="font-display text-2xl leading-tight">
+        Lorem ipsum dolor sit amet, consectetur
+        adipiscing elit, sed do eiusmod tempor
+        incididunt ut labore et dolore magna aliqua.
+        Ut enim ad minim veniam,
+      </p>
+    </div>
+  </div>
+</section>

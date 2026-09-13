@@ -1,0 +1,30 @@
+---
+import Container from '../shared/Container.astro';
+import ProjectCard from '../projects/ProjectCard.astro';
+import Button from '../shared/Button.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+
+const projects = Array.from({ length: 4 }).map(() => ({
+  name: 'Project Name',
+  stack: 'Tech Stack',
+  image: '/images/projects/article-large.png',
+}));
+---
+
+<section id="recent-work" class="section-projects">
+  <Container class="padding-section-large flex flex-col gap-[max(32px,4.444vw)] overflow-clip">
+    <div class="flex items-end justify-between">
+      <div>
+        <Eyebrow>Portfolio</Eyebrow>
+        <h2 class="heading-style-h2 leading-none">Recent Work</h2>
+      </div>
+      <Button href="/work" variant="primary" size="md" aria-label="View all projects">View All</Button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-[10px] sm:grid-cols-2">
+      {projects.map((project) => (
+        <ProjectCard name={project.name} stack={project.stack} image={project.image} />
+      ))}
+    </div>
+  </Container>
+</section>

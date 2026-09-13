@@ -1,0 +1,107 @@
+---
+import Container from '../shared/Container.astro';
+import Button from '../shared/Button.astro';
+import Eyebrow from '../shared/Eyebrow.astro';
+---
+
+<section class="section-contact-cta relative overflow-hidden">
+  <Container class="padding-section-large relative flex flex-col gap-[max(32px,3.333vw)] lg:flex-row lg:items-start lg:justify-between">
+    <div class="flex max-w-lg flex-col items-start gap-4 lg:pt-4">
+      <Eyebrow>Have a Project in Mind?</Eyebrow>
+      <h2 class="heading-style-h2 leading-none">Let's build something.</h2>
+      <p class="font-display text-base text-white/70">
+        Whether you have a question, want to work together, or simply wish to say hi — I'd love
+        to hear from you.
+      </p>
+    </div>
+
+    <form id="contact-cta-form" class="contact-card flex w-full max-w-md flex-col gap-5">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="contact-field">
+          <Eyebrow class="mb-0! text-[10px]! md:text-[10px]!">Name</Eyebrow>
+          <input type="text" name="name" placeholder="Your name" class="contact-input" required />
+        </label>
+        <label class="contact-field">
+          <Eyebrow class="mb-0! text-[10px]! md:text-[10px]!">Email</Eyebrow>
+          <input type="email" name="email" placeholder="you@email.com" class="contact-input" required />
+        </label>
+      </div>
+
+      <label class="contact-field">
+        <Eyebrow class="mb-0! text-[10px]! md:text-[10px]!">Project Type</Eyebrow>
+        <input type="text" name="project" placeholder="e.g. Webflow site, motion design" class="contact-input" />
+      </label>
+
+      <label class="contact-field">
+        <Eyebrow class="mb-0! text-[10px]! md:text-[10px]!">Message</Eyebrow>
+        <textarea
+          name="message"
+          placeholder="Tell me a bit about what you're looking for."
+          rows="4"
+          class="contact-input resize-none"
+        ></textarea>
+      </label>
+
+      <Button type="submit" variant="primary" size="lg" class="w-full">Send Message</Button>
+      <p id="contact-cta-status" class="text-center font-geist text-xs text-white/40">
+        I usually reply within 24 hours.
+      </p>
+    </form>
+  </Container>
+</section>
+
+<script>
+  // No backend wired up yet — hand off to the mailto CTA elsewhere on the
+  // site instead of silently reloading the page on submit.
+  const form = document.getElementById('contact-cta-form');
+  const status = document.getElementById('contact-cta-status');
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (status) status.textContent = "Thanks! Email hello@sahilpandey.dev directly and I'll get right back to you.";
+  });
+</script>
+
+<style>
+  .contact-card {
+    border-radius: max(20px, 1.667vw);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    padding: max(20px, 1.667vw);
+  }
+
+  .contact-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .contact-input {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 12px 14px;
+    font-family: var(--font-geist);
+    font-size: 14px;
+    color: white;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .contact-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .contact-input:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .contact-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 15%, transparent);
+  }
+</style>

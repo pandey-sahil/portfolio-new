@@ -1,0 +1,33 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CardNav from '../components/shared/CardNav.astro';
+import Container from '../components/shared/Container.astro';
+import Button from '../components/shared/Button.astro';
+import SectionDivider from '../components/shared/SectionDivider.astro';
+import Footer from '../components/shared/Footer.astro';
+import Eyebrow from '../components/shared/Eyebrow.astro';
+---
+
+<Layout title="Contact — Sahil Pandey" description="Get in touch with Sahil Pandey for freelance Webflow development work.">
+  <div class="page-wrapper bg-[#050314] text-white">
+    <main class="main-wrapper">
+      <CardNav />
+
+      <section class="section-contact pb-[max(60px,5.556vw)] pt-[max(140px,11.111vw)]">
+        <Container class="flex flex-col items-start gap-[max(20px,1.667vw)]">
+          <Eyebrow>Get in Touch</Eyebrow>
+          <h1 class="heading-style-h1 leading-none">Let's work together.</h1>
+          <p class="font-display max-w-xl text-base text-white/75">
+            Have a project in mind or just want to say hi? Send an email and I'll get back to you.
+          </p>
+          <Button href="mailto:hello@sahilpandey.dev" variant="primary" size="lg">
+            hello@sahilpandey.dev
+          </Button>
+        </Container>
+      </section>
+
+      <SectionDivider />
+      <Footer />
+    </main>
+  </div>
+</Layout>

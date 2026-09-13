@@ -1,0 +1,275 @@
+---
+import Logo from './Logo.astro';
+import Button from './Button.astro';
+import Link from './Link.astro';
+import { socialLinks } from '../../data/socialLinks';
+
+interface NavLink {
+  label: string;
+  href: string;
+  ariaLabel: string;
+}
+
+interface NavItem {
+  label: string;
+  links: NavLink[];
+}
+
+const items: NavItem[] = [
+  {
+    label: 'Menu',
+    links: [
+      { label: 'Home', href: '/', ariaLabel: 'Go to home page' },
+      { label: 'Work', href: '/work', ariaLabel: 'Go to work page' },
+    ],
+  },
+  {
+    label: 'Info',
+    links: [
+      { label: 'About', href: '/about', ariaLabel: 'Go to about page' },
+      { label: 'Contact', href: '/contact', ariaLabel: 'Go to contact page' },
+    ],
+  },
+  {
+    label: 'Socials',
+    links: socialLinks.map((social) => ({
+      label: social.label,
+      href: social.href,
+      ariaLabel: `Open ${social.label}`,
+    })),
+  },
+];
+
+---
+
+<div class="card-nav-container">
+  <nav class="card-nav bg-black/30">
+    <div class="card-nav-top">
+      <div
+        class="hamburger-menu text-white"
+        role="button"
+        aria-label="Open menu"
+        aria-expanded="false"
+        tabindex="0"
+      >
+        <div class="hamburger-line"></div>
+        <div class="hamburger-line"></div>
+      </div>
+
+      <a href="/" aria-label="Go to home page" class="logo-container flex items-center gap-1.5">
+        <span class="font-heading text-lg leading-none font-bold text-accent-blue" aria-hidden="true">{'{'}</span>
+        <Logo class="h-5 w-auto" />
+        <span class="font-heading text-lg leading-none font-bold text-accent-blue" aria-hidden="true">{'}'}</span>
+      </a>
+
+      <div class="flex items-center gap-2">
+        <Button href="/resume.pdf" target="_blank" rel="noopener" variant="secondary" size="md">Resume</Button>
+        <Button href="/contact" variant="primary" size="md">Let's Talk</Button>
+      </div>
+    </div>
+
+    <div class="card-nav-content" aria-hidden="true">
+      {items.map((item) => (
+        <div class="nav-card bg-white/5 text-white">
+          <div class="nav-card-label">{item.label}</div>
+          <div class="nav-card-links">
+            {item.links.map((link) => (
+              <Link class="nav-card-link font-medium" href={link.href} aria-label={link.ariaLabel} arrow>
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </nav>
+</div>
+
+<style>
+  .card-nav-container {
+    position: fixed;
+    top: max(16px, 1.667vw);
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 48px);
+    max-width: 800px;
+    z-index: 99;
+    box-sizing: border-box;
+  }
+
+  .card-nav {
+    display: block;
+    height: 60px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+    will-change: height;
+  }
+
+  .card-nav-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.45rem 0.55rem 1.1rem;
+    z-index: 2;
+  }
+
+  .hamburger-menu {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    gap: 6px;
+  }
+
+  .hamburger-menu:hover .hamburger-line {
+    opacity: 0.75;
+  }
+
+  .hamburger-line {
+    width: 26px;
+    height: 2px;
+    background-color: currentColor;
+    transition:
+      transform 0.25s ease,
+      opacity 0.2s ease,
+      margin 0.3s ease;
+    transform-origin: 50% 50%;
+  }
+
+  .hamburger-menu.open .hamburger-line:first-child {
+    transform: translateY(4px) rotate(45deg);
+  }
+
+  .hamburger-menu.open .hamburger-line:last-child {
+    transform: translateY(-4px) rotate(-45deg);
+  }
+
+  .logo-container {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .card-nav-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 60px;
+    bottom: 0;
+    padding: 0.5rem;
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .card-nav.open .card-nav-content {
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .nav-card {
+    height: 100%;
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: calc(0.9rem - 0.3rem);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 8px;
+    user-select: none;
+  }
+
+  .nav-card-label {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+
+  .nav-card-links {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .nav-card-link {
+    font-size: 15px;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-card-link:hover {
+    opacity: 0.75;
+  }
+
+  @media (max-width: 768px) {
+    .card-nav-container {
+      width: calc(100% - 32px);
+      top: 16px;
+    }
+
+    .card-nav-top {
+      padding: 0.5rem 1rem;
+      justify-content: space-between;
+    }
+
+    .hamburger-menu {
+      order: 2;
+    }
+
+    .logo-container {
+      position: static;
+      transform: none;
+      order: 1;
+    }
+
+    .card-nav-top :global(.btn) {
+      display: none;
+    }
+
+    .card-nav-content {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 0.5rem;
+      bottom: 0;
+      justify-content: flex-start;
+    }
+
+    .nav-card {
+      height: auto;
+      min-height: 60px;
+      flex: 1 1 auto;
+      max-height: none;
+    }
+  }
+</style>
+
+<script>
+  import '../../scripts/card-nav';
+</script>

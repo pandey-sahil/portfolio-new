@@ -1,0 +1,37 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CardNav from '../components/shared/CardNav.astro';
+import Container from '../components/shared/Container.astro';
+import Skills from '../components/skills/Skills.astro';
+import Experience from '../components/about/Experience.astro';
+import SectionDivider from '../components/shared/SectionDivider.astro';
+import Footer from '../components/shared/Footer.astro';
+import Eyebrow from '../components/shared/Eyebrow.astro';
+---
+
+<Layout title="About — Sahil Pandey" description="A bit about Sahil Pandey — creative Webflow developer.">
+  <div class="page-wrapper bg-[#050314] text-white">
+    <main class="main-wrapper">
+      <CardNav />
+
+      <section class="section-about pb-[max(60px,5.556vw)] pt-[max(140px,11.111vw)]">
+        <Container class="flex flex-col items-start gap-[max(20px,1.667vw)]">
+          <Eyebrow>About</Eyebrow>
+          <h1 class="heading-style-h1 leading-none">Hey, I'm Sahil.</h1>
+          <p class="font-display max-w-2xl text-base text-white/75">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+            incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+            exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+          </p>
+        </Container>
+      </section>
+
+      <SectionDivider />
+      <Experience />
+      <SectionDivider />
+      <Skills />
+      <SectionDivider />
+      <Footer />
+    </main>
+  </div>
+</Layout>

@@ -1,0 +1,18 @@
+---
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<span
+  class:list={[
+    'eyebrow-badge mb-3 inline-flex items-center gap-1.5 font-geist text-xs font-semibold tracking-widest text-white/70 uppercase md:mb-4 md:text-sm',
+    className,
+  ]}
+>
+  <span class="text-accent-blue" aria-hidden="true">{'{'}</span>
+  <slot />
+  <span class="text-accent-blue" aria-hidden="true">{'}'}</span>
+</span>

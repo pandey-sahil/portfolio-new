@@ -1,0 +1,77 @@
+---
+import { ACCENT_BLUE } from '../../lib/colors';
+
+export interface GradientBackgroundOptions {
+  color1?: string;
+  color2?: string;
+  color3?: string;
+  timeSpeed?: number;
+  colorBalance?: number;
+  warpStrength?: number;
+  warpFrequency?: number;
+  warpSpeed?: number;
+  warpAmplitude?: number;
+  blendAngle?: number;
+  blendSoftness?: number;
+  rotationAmount?: number;
+  noiseScale?: number;
+  grainAmount?: number;
+  grainScale?: number;
+  grainAnimated?: boolean;
+  contrast?: number;
+  gamma?: number;
+  saturation?: number;
+  centerX?: number;
+  centerY?: number;
+  zoom?: number;
+}
+
+interface Props {
+  id: string;
+  class?: string;
+  options?: GradientBackgroundOptions;
+}
+
+// Shared site background: the same blue/navy gradient used behind the Hero
+// and Footer, so both stay visually consistent. Override via `options`.
+const defaultOptions: GradientBackgroundOptions = {
+  color1: '#0C0648',
+  color2: ACCENT_BLUE,
+  color3: '#080430',
+  timeSpeed: 0.25,
+  colorBalance: 0,
+  warpStrength: 1,
+  warpFrequency: 5,
+  warpSpeed: 2,
+  warpAmplitude: 50,
+  blendAngle: 0,
+  blendSoftness: 0.05,
+  rotationAmount: 500,
+  noiseScale: 2,
+  grainAmount: 0,
+  grainScale: 2,
+  grainAnimated: false,
+  contrast: 1,
+  gamma: 1,
+  saturation: 1,
+  centerX: -0.3,
+  centerY: -0.08,
+  zoom: 0.9,
+};
+
+const { id, class: className, options = {} } = Astro.props;
+const mergedOptions = { ...defaultOptions, ...options };
+---
+
+<div id={id} class={className} data-grainient-options={JSON.stringify(mergedOptions)}></div>
+
+<script>
+  import { createGrainient } from '../../scripts/grainient';
+
+  document.querySelectorAll<HTMLElement>('[data-grainient-options]').forEach((container) => {
+    if (container.dataset.grainientInitialized) return;
+    container.dataset.grainientInitialized = 'true';
+    const options = JSON.parse(container.dataset.grainientOptions || '{}');
+    createGrainient(container, options);
+  });
+</script>

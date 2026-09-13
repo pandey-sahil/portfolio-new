@@ -1,0 +1,48 @@
+---
+import '../styles/global.css';
+import GrainOverlay from '../components/shared/GrainOverlay.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'Ship Studio Starter',
+  description = 'Sahil Pandey — creative Webflow developer building performant, motion-rich websites.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="preload" href="/fonts/UncutSans-Variable.ttf" as="font" type="font/ttf" crossorigin />
+    <title>{title}</title>
+  </head>
+  <body class="bg-background text-foreground font-body antialiased">
+    <slot />
+    <GrainOverlay />
+    <script>
+      import { initSplitHover } from '../scripts/split-hover';
+      initSplitHover();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CardNav from '../components/shared/CardNav.astro';
+import Hero from '../components/home/Hero.astro';
+import TechMarquee from '../components/home/TechMarquee.astro';
+import ToolsWall from '../components/home/ToolsWall.astro';
+import RecentWork from '../components/home/RecentWork.astro';
+import Services from '../components/home/Services.astro';
+import ContactSection from '../components/home/ContactSection.astro';
+import Footer from '../components/shared/Footer.astro';
+import SectionDivider from '../components/shared/SectionDivider.astro';
+---
+
+<Layout title="Sahil Pandey — Creative Webflow Developer">
+  <div class="page-wrapper bg-[#050314] text-white">
+    <main class="main-wrapper">
+      <CardNav />
+      <Hero />
+      <SectionDivider />
+      <TechMarquee />
+      <SectionDivider />
+      <ToolsWall />
+      <SectionDivider />
+      <RecentWork />
+      <SectionDivider />
+      <Services />
+      <SectionDivider />
+      <ContactSection />
+      <SectionDivider />
+      <Footer />
+    </main>
+  </div>
+</Layout>
