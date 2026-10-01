@@ -14,7 +14,7 @@ A minimal Astro starter with Tailwind CSS for building static marketing sites wi
 
 ```bash
 npm install
-npm run dev
+npm run dev 
 ```
 
 Open [http://localhost:4321](http://localhost:4321) to view your site.
