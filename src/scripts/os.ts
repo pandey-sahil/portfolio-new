@@ -325,7 +325,8 @@ function initPower() {
 
 /* ---------- windows ---------- */
 
-let z = 10;
+// windows stack from here up, above the menu bar and the dock (z-index 500), so their buttons are never under them
+let z = 1000;
 let cascade = 0;
 const openOrder: string[] = [];
 

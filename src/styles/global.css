@@ -1592,8 +1592,10 @@ button {
     box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 20px 40px rgba(0, 0, 0, 0.5);
   }
 
+  /* above the drawn chin, so an open window (fixed, full screen) is never under its label */
   .screen {
     position: relative;
+    z-index: 2;
     inset: auto;
     width: auto;
     height: auto;
@@ -1675,11 +1677,13 @@ button {
     justify-content: center;
   }
 
+  /* a window fills the screen's glass exactly (the scene's 8px, the bezel's 10px, the 44px chin below), so the chin
+     and its power key stay clear underneath */
   .win,
   .win--lg,
   .win.is-max {
     position: fixed;
-    inset: 8px !important;
+    inset: 18px 18px 52px !important;
     width: auto;
     max-height: none;
     z-index: 950;
