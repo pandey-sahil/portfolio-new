@@ -84,11 +84,13 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   // the poster is drawn in the site's pixel font
   await document.fonts.load('92px Silkscreen').catch(() => {});
   const glb = (name: string) => loader.loadAsync(name).then((g) => g.scene);
-  const [mac, calathea, encyclopedias, pictureFrame] = await Promise.all([
+  const [mac, calathea, encyclopedias, pictureFrame, lampModel, mouseModel] = await Promise.all([
     glb('/models/macbook.glb'),
     glb('/models/room/calathea_orbifolia_01.glb'),
     glb('/models/room/book_encyclopedia_set_01.glb'),
     glb('/models/room/standing_picture_frame_01.glb'),
+    glb('/models/room/lamp.glb'),
+    glb('/models/room/mouse.glb'),
     ]);
 
   const W = () => window.innerWidth;
@@ -195,7 +197,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   window.addEventListener('keydown', (e) => onKey(e, true));
   window.addEventListener('keyup', (e) => onKey(e, false));
   window.addEventListener('blur', () => [...K65.flat()].forEach(([code]) => onKey({ code } as KeyboardEvent, false)));
-  place(buildMouse(), 0.355, 0.17, -0.12);
+  place(buildMouse(mouseModel), 0.355, 0.17, -0.15);
   place(pictureFrame, -0.4, -0.25, -Math.PI / 2 + 0.3, 1); // its picture faces the model's +x, the stand leg -x
   pictureFrame.traverse((o) => {
     const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
@@ -210,12 +212,18 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   });
   place(buildCharger(), -0.33, 0.2, 0.1);
   place(buildNotebook(), 0.48, 0.1, -0.25);
+  // signs someone works here: to-dos stuck to the wall, a wireframe printout under the keyboard, the phone face down
+  // on its charger, the laptop's cable trailing off the back of the desk
+  place(buildStickies(), 0, 0, 0);
+  place(buildPrintout(), -0.21, 0.19, 0.42);
+  place(buildPhone(), -0.33, 0.2, 0.35);
+  place(buildChargingCable(), 0, 0, 0);
   place(buildPowerStrip(), 0.55, -0.22, 0);
   const shelves = buildShelves({ calathea, encyclopedias });
   place(shelves.group, 0, 0, 0);
   // the arc lamp on the right, its head reaching over towards the laptop
-  const lamp = buildArcLamp();
-  place(lamp.group, 0.285, -0.255, 0);
+  const lamp = buildLamp(lampModel);
+  place(lamp.group, 0.29, -0.25, -1.23);
 
   /* ---- light: the night outside, the lamp, the LED strip, the screen ---- */
   world.add(new THREE.HemisphereLight('#2c3452', '#1c130c', 0.5));
@@ -924,8 +932,9 @@ function buildNotebook() {
   const g = new THREE.Group();
   const cover = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.012, 0.21), std('#2b2f3a', 0.8));
   cover.position.y = MAT + 0.006;
-  const page = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.002, 0.2), std('#e9e1cf', 0.9));
-  page.position.y = MAT + 0.0125;
+  const page = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.2), std('#ffffff', 0.9, 0, { map: handwritten() }));
+  page.rotation.x = -Math.PI / 2;
+  page.position.y = MAT + 0.0122;
   const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 8), std('#1c1c20', 0.4, 0.4));
   pen.rotation.set(0, 0.4, Math.PI / 2);
   pen.position.set(0, MAT + 0.018, 0.01);
@@ -939,43 +948,100 @@ function buildShelves(m: { calathea: THREE.Object3D; encyclopedias: THREE.Object
   const wood = std('#ffffff', 0.6, 0, { map: woodTexture() });
   const bracket = std('#2a1a10', 0.7);
   const Y = 0.43;
-  const shelf = (x: number, w: number) => {
+  const shelf = (x: number, y: number, w: number) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, 0.2), wood);
-    b.position.set(x, Y, WALL + 0.1);
+    b.position.set(x, y, WALL + 0.1);
     b.castShadow = b.receiveShadow = true;
     group.add(b);
     for (const s of [-1, 1]) {
       const k = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.12), bracket);
-      k.position.set(x + s * (w / 2 - 0.07), Y - 0.06, WALL + 0.06);
+      k.position.set(x + s * (w / 2 - 0.07), y - 0.06, WALL + 0.06);
       group.add(k);
     }
+    return y + 0.0125;
   };
-  shelf(0.33, 0.5);
-  const top = Y + 0.0125;
-  const put = (o: THREE.Object3D, x: number, y: number, z: number, yaw: number, scale: number) => {
-    o.position.set(x, y, z);
-    o.rotation.y = yaw;
-    o.scale.setScalar(scale);
-    group.add(o);
-    return o;
+  const top = shelf(0.33, Y, 0.5);
+  const top2 = shelf(0.83, 0.64, 0.34); // a second, higher shelf on the right
+
+  // the books, one at a time out of the encyclopedia set, in a few cover colours, arranged as books really sit:
+  // a run standing, a couple leaning, a few lying in a pile
+  const BS = 0.6;
+  const tints = ['#ffffff', '#7d8fb8', '#86a68f', '#d9b56c', '#a3a3a3', '#5f6270'];
+  const book = (n: number, x: number, y: number, rz: number, ry: number, tint: number) => {
+    const node = m.encyclopedias.getObjectByName(`book_encyclopedia_set_01_book${String(n).padStart(2, '0')}`);
+    if (!node) return 0;
+    node.position.set(0, 0, 0);
+    node.rotation.set(0, 0, 0);
+    node.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(node);
+    const holder = new THREE.Group();
+    holder.add(node);
+    node.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+    if (tint) {
+      node.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
+          (mesh.material as THREE.MeshStandardMaterial).color.set(tints[tint]);
+        }
+      });
+    }
+    holder.scale.setScalar(BS);
+    holder.position.set(x, y, WALL + 0.1);
+    holder.rotation.set(0, ry, rz);
+    group.add(holder);
+    return (bb.max.x - bb.min.x) * BS; // its thickness
   };
-  // a row of encyclopedias, spines out
-  put(m.encyclopedias, 0.095, top, WALL + 0.1, 0, 0.55);
-  // one clump of the calathea, planted in a matte white pot
-  const pot = new THREE.Mesh(
-    new THREE.LatheGeometry([[0, 0], [0.048, 0], [0.056, 0.008], [0.06, 0.085], [0.056, 0.085], [0.054, 0.08], [0, 0.08]].map(([x, y]) => new THREE.Vector2(x, y)), 40),
-    std('#e6e1d8', 0.7),
-  );
-  pot.position.set(0.5, top, WALL + 0.1);
-  group.add(pot);
-  const clump = m.calathea.getObjectByName('calathea_orbifolia_01_b') ?? m.calathea;
-  const leaves = new THREE.Group();
-  leaves.add(clump);
-  clump.position.set(0, 0, 0);
-  clump.updateMatrixWorld(true);
-  const cb = new THREE.Box3().setFromObject(clump);
-  clump.position.set(-(cb.min.x + cb.max.x) / 2, -cb.min.y, -(cb.min.z + cb.max.z) / 2); // its middle onto the pot's
-  put(leaves, 0.5, top + 0.07, WALL + 0.1, 0.4, 0.52);
+  // left shelf: six standing, two leaning on them, a pile of three lying flat
+  let x = 0.1;
+  [[1, 0], [2, 1], [3, 0], [4, 3], [5, 0], [6, 2]].forEach(([n, t], i) => {
+    const w = book(n, x + 0.01, top, 0, (i % 3) * 0.03 - 0.03, t);
+    x += w + 0.002;
+  });
+  book(7, x + 0.025, top, -0.32, 0.02, 4);
+  book(8, x + 0.05, top, -0.36, -0.03, 0);
+  [[9, 5], [10, 0], [11, 2]].forEach(([n, t], i) => book(n, 0.375 + i * 0.004, top + 0.002 + i * 0.022, Math.PI / 2, i * 0.08 - 0.05, t));
+  // right shelf: a short run, a leaner, a small pile
+  x = 0.69;
+  [[12, 1], [13, 0], [14, 3], [15, 2]].forEach(([n, t]) => {
+    const w = book(n, x + 0.01, top2, 0, 0, t);
+    x += w + 0.002;
+  });
+  book(16, x + 0.03, top2, -0.3, 0, 5);
+  [[17, 0], [18, 4]].forEach(([n, t], i) => book(n, 0.92 + i * 0.006, top2 + 0.002 + i * 0.022, Math.PI / 2, 0.1 - i * 0.12, t));
+
+  // potted calatheas: one on the left shelf, a big one on the floor by the desk
+  const potted = (clumpName: string, r: number, h: number, colour: string) => {
+    const g = new THREE.Group();
+    const pot = new THREE.Mesh(
+      new THREE.LatheGeometry([[0, 0], [r * 0.82, 0], [r * 0.95, h * 0.1], [r, h], [r * 0.94, h], [r * 0.9, h * 0.94], [0, h * 0.94]].map(([px, py]) => new THREE.Vector2(px, py)), 40),
+      std(colour, 0.75),
+    );
+    g.add(pot);
+    const clump = m.calathea.getObjectByName(clumpName);
+    if (clump) {
+      const leaves = new THREE.Group();
+      leaves.add(clump);
+      clump.position.set(0, 0, 0);
+      clump.updateMatrixWorld(true);
+      const cb = new THREE.Box3().setFromObject(clump);
+      clump.position.set(-(cb.min.x + cb.max.x) / 2, -cb.min.y, -(cb.min.z + cb.max.z) / 2);
+      leaves.position.y = h * 0.82;
+      g.add(leaves);
+      return { g, leaves };
+    }
+    return { g, leaves: g };
+  };
+  const shelfPlant = potted('calathea_orbifolia_01_b', 0.06, 0.085, '#e6e1d8');
+  shelfPlant.leaves.scale.setScalar(0.52);
+  shelfPlant.g.position.set(0.51, top, WALL + 0.1);
+  shelfPlant.g.rotation.y = 0.4;
+  group.add(shelfPlant.g);
+  const floorPlant = potted('calathea_orbifolia_01_a', 0.15, 0.3, '#3b3a40');
+  floorPlant.leaves.scale.setScalar(0.85);
+  floorPlant.g.position.set(0.84, FLOOR, 0.12);
+  floorPlant.g.rotation.y = -0.6;
+  group.add(floorPlant.g);
   // a warm light over the shelves, as from the lamp
   const glow = new THREE.PointLight('#ffb35c', 0.5, 1.0, 1.6);
   glow.position.set(0.6, 0.62, WALL + 0.3);
@@ -1068,6 +1134,150 @@ function posterTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   return tex;
+}
+
+/* ---------- signs of work: notes, a printout, the phone, a cable ---------- */
+
+const HAND = '"Bradley Hand", "Marker Felt", "Segoe Print", "Comic Sans MS", cursive';
+
+// the notebook's page: today's list, in pen, two things ticked off
+function handwritten() {
+  const c = document.createElement('canvas');
+  c.width = 280;
+  c.height = 400;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ece4d2';
+  g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = 'rgba(90,120,170,0.25)';
+  g.lineWidth = 1;
+  for (let y = 70; y < c.height; y += 26) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(c.width, y);
+    g.stroke();
+  }
+  g.fillStyle = '#1f2a44';
+  g.font = `600 26px ${HAND}`;
+  g.fillText('today', 20, 48);
+  g.font = `20px ${HAND}`;
+  const items = [['hero anim (GSAP)', true], ['CMS: case studies', true], ['fix CLS /pricing', false], ['QA on mobile', false], ['client call 11:00', false], ['ship v2 !!', false]] as const;
+  items.forEach(([t, done], i) => {
+    const y = 90 + i * 26;
+    g.fillText(`— ${t}`, 18, y);
+    if (done) {
+      g.strokeStyle = '#1f2a44';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(30, y - 7);
+      g.lineTo(30 + g.measureText(t).width + 18, y - 9);
+      g.stroke();
+    }
+  });
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// sticky notes on the wall between the poster and the window, and one on the shelf's edge
+function buildStickies() {
+  const g = new THREE.Group();
+  const note = (text: string, colour: string, x: number, y: number, z: number, ry: number, rz: number) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 160;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = colour;
+    ctx.fillRect(0, 0, 160, 160);
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillRect(0, 0, 160, 22); // the sticky strip
+    ctx.fillStyle = '#26262c';
+    ctx.font = `24px ${HAND}`;
+    text.split('\n').forEach((line, i) => ctx.fillText(line, 14, 58 + i * 30));
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.06), std('#ffffff', 0.85, 0, { map: tex, side: THREE.DoubleSide }));
+    m.position.set(x, y, z);
+    m.rotation.set(0, ry, rz);
+    g.add(m);
+  };
+  // on the left wall, under the poster
+  note('call Ravi\nre: launch', '#ffe27a', -0.497, 0.19, -0.2, Math.PI / 2, 0.06);
+  note('fix CLS\n/pricing', '#ff9fb2', -0.497, 0.17, -0.12, Math.PI / 2, -0.08);
+  note('GSAP\nscroll hero', '#9fd3ff', -0.497, 0.11, -0.16, Math.PI / 2, 0.03);
+  // on the back wall by the window, and on the shelf's edge
+  note('ship v2 ✓', '#b8f0a0', 0.08, 0.26, WALL + 0.002, 0, -0.05);
+  note('drink\nwater :)', '#ffe27a', 0.2, 0.425, WALL + 0.201, 0, 0.04);
+  return g;
+}
+
+// a printed wireframe, half under the keyboard, with notes in red
+function buildPrintout() {
+  const c = document.createElement('canvas');
+  c.width = 300;
+  c.height = 420;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#f2f0ea';
+  g.fillRect(0, 0, 300, 420);
+  g.strokeStyle = '#8a8a90';
+  g.lineWidth = 2;
+  g.strokeRect(20, 20, 260, 40); // nav
+  g.strokeRect(20, 75, 260, 120); // hero
+  g.beginPath();
+  g.moveTo(20, 75);
+  g.lineTo(280, 195);
+  g.moveTo(280, 75);
+  g.lineTo(20, 195);
+  g.stroke();
+  for (let i = 0; i < 3; i++) g.strokeRect(20 + i * 88, 210, 80, 80); // cards
+  for (let i = 0; i < 5; i++) g.fillRect(20, 310 + i * 16, 180 + (i % 2) * 60, 5);
+  g.strokeStyle = '#d0342c';
+  g.fillStyle = '#d0342c';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.ellipse(150, 135, 110, 50, 0, 0, Math.PI * 2);
+  g.stroke();
+  g.font = `22px ${HAND}`;
+  g.fillText('more space!', 160, 255);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.21), std('#ffffff', 0.9, 0, { map: tex }));
+  sheet.rotation.x = -Math.PI / 2;
+  sheet.position.y = MAT + 0.0006;
+  const grp = new THREE.Group();
+  grp.add(sheet);
+  return grp;
+}
+
+// the phone, face down on the charging pad, its camera bump up
+function buildPhone() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.0716, 0.0078, 0.1476, 4, 0.006), std('#2b2d33', 0.35, 0.6));
+  body.position.y = MAT + 0.006 + 0.0039;
+  const bump = new THREE.Mesh(new RoundedBoxGeometry(0.035, 0.002, 0.037, 3, 0.006), std('#25272c', 0.25, 0.7));
+  bump.position.set(-0.014, MAT + 0.006 + 0.0088, -0.05);
+  g.add(body, bump);
+  for (const [x, z] of [[-0.022, -0.06], [-0.006, -0.06], [-0.022, -0.042]]) {
+    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.0022, 20), std('#0d0d10', 0.15, 0.5));
+    lens.position.set(x + 0.008, MAT + 0.006 + 0.0098, z + 0.008);
+    g.add(lens);
+  }
+  return g;
+}
+
+// the laptop's charging cable: out of its left side, across the mat, off the back of the desk and down
+function buildChargingCable() {
+  const g = new THREE.Group();
+  const white = std('#f1f1ee', 0.45);
+  const pts = [
+    [-0.166, 0.006, -0.06], [-0.19, 0.0035, -0.07], [-0.24, 0.0035, -0.13], [-0.36, 0.0035, -0.2], [-0.4, 0.0035, -0.28],
+    [-0.42, 0.0, -0.33], [-0.43, -0.12, -0.335], [-0.44, -0.4, -0.335],
+  ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.0016, 8), white));
+  const plug = new THREE.Mesh(new RoundedBoxGeometry(0.014, 0.005, 0.007, 2, 0.002), white);
+  plug.position.set(-0.159, 0.006, -0.058);
+  g.add(plug);
+  return g;
 }
 
 /* ---------- surfaces: walnut, carbon weave ---------- */
@@ -1271,21 +1481,15 @@ function buildKeyGlow(mac: THREE.Object3D) {
   };
 }
 
-/* ---------- a wireless mouse ---------- */
+/* ---------- the mouse: "Mouse Logitech G203" by JorgeAlfredOwO (Sketchfab, CC BY 4.0) ---------- */
 
-function buildMouse() {
-  // an Apple Magic Mouse: a low glossy white shell on a thin aluminium base
+// The file is in its own units, 7 long, sitting off to one side; scaled to the real mouse's 116 mm and centred.
+function buildMouse(model: THREE.Object3D) {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.005, 48), std('#c9ccd1', 0.35, 0.85));
-  base.scale.set(0.0285, 1, 0.0565);
-  base.position.y = MAT + 0.0025;
-  const shell = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshPhysicalMaterial({ color: '#f5f5f3', roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.08 }),
-  );
-  shell.scale.set(0.0278, 0.0165, 0.0555);
-  shell.position.y = MAT + 0.005;
-  g.add(base, shell);
+  const S = 0.116 / 6.97;
+  model.scale.setScalar(S);
+  model.position.set(-4.564 * S, MAT, 0.012 * S);
+  g.add(model);
   return g;
 }
 
@@ -1305,33 +1509,27 @@ function buildCharger() {
   return g;
 }
 
-/* ---------- a minimal arc desk lamp, its head over the desk ---------- */
+/* ---------- the desk lamp: "Tomons Desk Lamp" by chris munoz (Sketchfab, CC BY 4.0) ---------- */
 
-function buildArcLamp() {
+// The model is in its own units (its base is 2.5 across); scaled to a real lamp about 32 cm tall. Its cone points along
+// +x+z in the file; place() turns the whole thing. The studio backdrop and light panels it came with are dropped.
+function buildLamp(model: THREE.Object3D) {
   const group = new THREE.Group();
-  const black = std('#151518', 0.55, 0.35);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.046, 0.01, 48), black);
-  base.position.y = 0.005;
-  group.add(base);
-  const head = new THREE.Vector3(-0.13, 0.3, 0.13);
-  const arm = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0.01, 0),
-    new THREE.Vector3(0, 0.2, 0.0),
-    new THREE.Vector3(-0.03, 0.31, 0.04),
-    new THREE.Vector3(-0.09, 0.335, 0.095),
-    new THREE.Vector3(head.x, head.y + 0.02, head.z),
-  ]);
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 80, 0.0035, 10), black));
-  const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.045, 40, 1, true), std('#151518', 0.55, 0.35, { side: THREE.DoubleSide }));
-  shade.position.copy(head);
-  group.add(shade);
-  const bulb = new THREE.Mesh(new THREE.CircleGeometry(0.026, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffe2b8').multiplyScalar(1.6), toneMapped: false }));
-  bulb.rotation.x = Math.PI / 2;
-  bulb.position.set(head.x, head.y - 0.02, head.z);
-  group.add(bulb);
+  const S = 0.056;
+  ['Backdrop_0', 'LightPanels_0'].forEach((n) => model.getObjectByName(n)?.removeFromParent());
+  model.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (!m) return;
+    // the inside of the cone glows with the bulb
+    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.8 });
+  });
+  model.scale.setScalar(S);
+  group.add(model);
+  // the cone's mouth, in the lamp's own (unscaled) frame
+  const head = new THREE.Vector3(1.38 * S, 4.35 * S, 1.45 * S);
   const beam = new THREE.SpotLight('#ffcf98', 1.5, 0.9, 0.6, 0.85, 1.6);
-  beam.position.set(head.x, head.y - 0.02, head.z);
-  beam.target.position.set(head.x - 0.12, -0.3, head.z + 0.1);
+  beam.position.copy(head);
+  beam.target.position.set(head.x + 0.08, -0.3, head.z + 0.09);
   beam.castShadow = true;
   beam.shadow.mapSize.set(1024, 1024);
   beam.shadow.bias = -0.0005;
@@ -1339,7 +1537,7 @@ function buildArcLamp() {
   group.add(beam, beam.target);
   // the light that spills out round the shade, warming the wall and the books
   const spill = new THREE.PointLight('#ffa860', 0.9, 1.5, 1.4);
-  spill.position.set(head.x + 0.03, head.y + 0.01, head.z - 0.06);
+  spill.position.set(head.x - 0.02, head.y + 0.03, head.z - 0.05);
   group.add(spill);
   return { group };
 }
