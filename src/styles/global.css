@@ -419,6 +419,61 @@ button {
   opacity: 1;
 }
 
+/* first visit: the room's things work, and nothing else says so */
+.stage-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: rgba(14, 11, 8, 0.85);
+  box-shadow: 0 0 0 1px rgba(255, 176, 0, 0.35);
+  color: var(--phos);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.stage-hint.is-on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.stage-hint-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--phos);
+  animation: hint-blink 1.2s steps(2, jump-none) infinite;
+}
+@keyframes hint-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-hint {
+    transition: opacity 0.2s;
+    transform: translate(-50%, 0);
+  }
+  .stage-hint-dot {
+    animation: none;
+  }
+}
+@media (max-width: 480px) {
+  .stage-hint {
+    white-space: normal;
+    width: calc(100vw - 32px);
+    font-size: 12px;
+  }
+}
+
 /* from the whole-desk view, the screen is a button that zooms in */
 .scene.is-far .screen,
 .scene.is-far .screen * {

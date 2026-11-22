@@ -11,6 +11,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { gsap } from 'gsap';
 
 /* The night desk in 3D. A MacBook by a window over a city at night; around it a pixel LED clock, a mug of coffee, an
@@ -259,10 +261,10 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   const applyLamp = () => {
     const v = lampLight.v;
     lamp.beam.intensity = 1.5 * v;
-    lamp.spill.intensity = 0.9 * v;
+    lamp.spill.intensity = 0.65 * v;
     bounce.intensity = 0.1 + 0.8 * v;
     shelves.glow.intensity = 0.5 * v;
-    lamp.cones.forEach((m) => (m.emissiveIntensity = 0.8 * v));
+    lamp.cones.forEach((m) => (m.emissiveIntensity = 0.45 * v));
   };
   const windowLight = (d: number) => {
     windowFill.intensity = 0.4 * (1 - d * 0.85);
@@ -479,6 +481,41 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   tip.className = 'stage-tip';
   tip.setAttribute('aria-hidden', 'true');
   scene$.append(tip);
+  // Nothing in the room says it works until the pointer finds it: a one-line hint, once the camera has settled on
+  // the desk, until the visitor has used something in the room (remembered after that)
+  const HINT = 'sahilos-room-used';
+  let used = false;
+  try {
+    used = localStorage.getItem(HINT) === '1';
+  } catch {}
+  const hint = document.createElement('p');
+  hint.className = 'stage-hint';
+  hint.setAttribute('role', 'status');
+  const touch = window.matchMedia('(hover: none)').matches;
+  hint.innerHTML = `<span class="stage-hint-dot" aria-hidden="true"></span>psst, the room works: ${touch ? 'tap' : 'click'} the lamp, the blinds, the mug, the notes`;
+  scene$.append(hint);
+  let hintTimer = 0;
+  const hideHint = () => {
+    clearTimeout(hintTimer);
+    hint.classList.remove('is-on');
+  };
+  const showHint = (after: number) => {
+    if (used) return;
+    clearTimeout(hintTimer);
+    hintTimer = window.setTimeout(() => {
+      if (level === 0 || reading || used) return;
+      hint.classList.add('is-on');
+      hintTimer = window.setTimeout(hideHint, 9000);
+    }, after);
+  };
+  const markUsed = () => {
+    hideHint();
+    if (used) return;
+    used = true;
+    try {
+      localStorage.setItem(HINT, '1');
+    } catch {}
+  };
   const overUi = (t: EventTarget | null) => t instanceof Element && !!t.closest('#screen, .cam-ctrls, .win, .monitor-power, a, button');
   let lastPick = 0;
   window.addEventListener('pointermove', (e) => {
@@ -498,6 +535,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     const act = pick(e.clientX, e.clientY);
     if (!act) return;
     actions[act].run();
+    markUsed();
     tip.textContent = actions[act].tip();
   });
 
@@ -517,6 +555,11 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   };
   composer.addPass(ao);
   composer.addPass(new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.55, 0.5, 0.88));
+  // the edges of the frame fall off a little, so the eye settles on the laptop, not the lamp
+  const vignette = new ShaderPass(VignetteShader);
+  vignette.uniforms.offset.value = 0.85;
+  vignette.uniforms.darkness.value = 1; // 1: falls off to black (above 1 goes negative and tints)
+  composer.addPass(vignette);
   composer.addPass(new OutputPass());
 
   /* ---- camera framings: 0 the screen, 1 the image's view of the desk, 2 a step back ---- */
@@ -638,6 +681,8 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     setLevel(next, duration) {
       level = next;
       reading = false;
+      if (level === 0) hideHint();
+      else showHint((duration || 0) * 1000 + 1200);
       if (frameFade.v < 1) fadeFrame(true);
       const v = views()[level];
       const to = { px: v.pos.x, py: v.pos.y, pz: v.pos.z, tx: v.target.x, ty: v.target.y, tz: v.target.z, fov: v.fov };
@@ -1159,7 +1204,7 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   group.add(wet);
 
   /* a purple LED strip along the foot of the window, glowing up the frame */
-  const ledColor = new THREE.Color('#8f5cff');
+  const ledColor = new THREE.Color('#ff9a3c');
   const ledW = open.x1 - open.x0 - 0.06;
   const led = new THREE.Mesh(new THREE.BoxGeometry(ledW, 0.004, 0.004), new THREE.MeshBasicMaterial({ color: ledColor.clone().multiplyScalar(2.2), toneMapped: false }));
   led.position.set((open.x0 + open.x1) / 2, 0.014, wallZ + 0.004);
@@ -1177,7 +1222,7 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   ledHit.position.copy(led.position);
   ledHit.userData.interact = 'led';
   group.add(ledHit);
-  const LEDS = ['#8f5cff', '#3d7bff', '#ff4fa3', null];
+  const LEDS = ['#ff9a3c', '#22c7b8', '#3d7bff', '#ff4f6d', null];
   let ledAt = 0;
   let ledBase = 2;
 
@@ -1191,7 +1236,7 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
     },
     blinds,
     setBlinds,
-    // the next colour along: purple, blue, pink, off
+    // the next colour along: amber, teal, blue, coral, off
     nextLed() {
       ledAt = (ledAt + 1) % LEDS.length;
       const c = LEDS[ledAt];
@@ -1371,7 +1416,7 @@ const BOOKS: Book[] = (
     ['COLOUR', 'I. Sato', '#f2c14e', '#1d1d22', 0.034, 0.21, 0.145, 3],
     ['THINK SMALL', 'D. Lin', '#2f5d8a', '#f2ede1', 0.018, 0.175, 0.115, 0],
     ['WEBGL NOTES', 'A. Mehta', '#7fb7a4', '#14302a', 0.026, 0.19, 0.13, 2],
-    ['LATE NIGHTS', 'S. P.', '#6c4cc4', '#ffd7f0', 0.022, 0.17, 0.115, 1],
+    ['LATE NIGHTS', 'S. P.', '#1f6f78', '#ffd9a8', 0.022, 0.17, 0.115, 1],
     ['SLOW WEB', 'J. Hart', '#ff8a3d', '#1d1d22', 0.024, 0.18, 0.125, 3],
     ['HAIKU', 'B. Ono', '#f08bb0', '#3a1426', 0.02, 0.15, 0.11, 0],
     ['GRIDS', 'E. Moss', '#2a7a5e', '#f2ede1', 0.028, 0.16, 0.12, 2],
@@ -1383,7 +1428,7 @@ const BOOKS: Book[] = (
     ['CSS', 'L. Vega', '#f2c14e', '#2f5d8a', 0.022, 0.16, 0.115, 0],
     ['DRAW', 'N. Ali', '#1d1d22', '#f2ede1', 0.024, 0.165, 0.12, 3],
     ['ZINE 04', '', '#ff8a3d', '#1d1d22', 0.012, 0.15, 0.11, 1],
-    ['FOCUS', 'O. Berg', '#6c4cc4', '#f2ede1', 0.022, 0.14, 0.105, 2],
+    ['FOCUS', 'O. Berg', '#34383f', '#f2c14e', 0.022, 0.14, 0.105, 2],
   ] as const
 ).map(([title, by, bg, fg, t, h, d, style]) => ({ title, by, bg, fg, t, h, d, style }));
 
@@ -1499,7 +1544,7 @@ function sunsetPicture() {
   c.height = 320;
   const g = c.getContext('2d')!;
   const sky = g.createLinearGradient(0, 0, 0, 220);
-  sky.addColorStop(0, '#3b2a5c');
+  sky.addColorStop(0, '#22324a');
   sky.addColorStop(0.55, '#e0745a');
   sky.addColorStop(1, '#ffc27a');
   g.fillStyle = sky;
@@ -1508,7 +1553,7 @@ function sunsetPicture() {
   g.beginPath();
   g.arc(128, 200, 46, 0, Math.PI * 2);
   g.fill();
-  g.fillStyle = '#5a3550';
+  g.fillStyle = '#7a3a26';
   g.beginPath();
   g.moveTo(0, 230);
   g.quadraticCurveTo(70, 180, 140, 225);
@@ -1516,7 +1561,7 @@ function sunsetPicture() {
   g.lineTo(256, 320);
   g.lineTo(0, 320);
   g.fill();
-  g.fillStyle = '#2e1f36';
+  g.fillStyle = '#2a1c16';
   g.beginPath();
   g.moveTo(0, 270);
   g.quadraticCurveTo(110, 235, 256, 265);
@@ -1714,8 +1759,8 @@ function buildPhone() {
   const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' });
   const draw = (message: { from: string; text: string } | null) => {
     const sky = ctx.createLinearGradient(0, 0, 0, 500);
-    sky.addColorStop(0, '#1c2048');
-    sky.addColorStop(1, '#6a3a5e');
+    sky.addColorStop(0, '#0f2234');
+    sky.addColorStop(1, '#b0552a');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, 240, 500);
     ctx.fillStyle = 'rgba(0,0,0,0.9)';
@@ -2016,7 +2061,7 @@ function buildLamp(model: THREE.Object3D) {
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (!m) return;
     // the inside of the cone glows with the bulb
-    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.8 }), cones.push(m);
+    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.45 }), cones.push(m);
   });
   model.scale.setScalar(S);
   group.add(model);
@@ -2031,7 +2076,7 @@ function buildLamp(model: THREE.Object3D) {
   beam.shadow.radius = 6;
   group.add(beam, beam.target);
   // the light that spills out round the shade, warming the wall and the books
-  const spill = new THREE.PointLight('#ffa860', 0.9, 1.5, 1.4);
+  const spill = new THREE.PointLight('#ffa860', 0.65, 1.5, 1.4);
   spill.position.set(head.x - 0.02, head.y + 0.03, head.z - 0.05);
   group.add(spill);
   group.userData.interact = 'lamp';
