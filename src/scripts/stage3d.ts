@@ -11,13 +11,13 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { gsap } from 'gsap';
 
 /* The night desk in 3D. A MacBook by a window over a city at night; around it a pixel LED clock, an iced coffee, an
-   ivy against the window grille, a glass mushroom lamp, a succulent, headphones, fairy lights and a purple LED strip.
+   a succulent in a concrete pot, an arc desk lamp, wired earphones, fairy lights and a purple LED strip.
    The layout and the camera were measured off the inspiration image (the camera fitted to its laptop to about 10 px).
    three.js draws the room with bloom; the live SAHIL/OS screen (real HTML) sits on the MacBook's display through
    CSS3DRenderer. World units are metres; the origin is the middle of the laptop's base on the desk, +z to the viewer.
 
-   Assets: MacBook "Macbook Pro 13 inch 2020" by timblewee (Sketchfab, CC BY 4.0); Potted Plant 02 from Poly Haven
-   (CC0); the city is Note Thanun's photo on Unsplash. Everything else is built here. */
+   Assets: MacBook "Macbook Pro 13 inch 2020" by timblewee (Sketchfab, CC BY 4.0); the city is Note Thanun's photo on
+   Unsplash. Everything else is built here. */
 
 export const SCREEN_PX = { w: 1100, h: 688 };
 const SCREEN_M = { w: 0.286, h: 0.179 }; // the display, in metres
@@ -76,10 +76,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
 
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
-  const [mac, ivy] = await Promise.all([
-    loader.loadAsync('/models/macbook.glb').then((g) => g.scene),
-    loader.loadAsync('/models/desk/potted_plant_02.glb').then((g) => g.scene),
-  ]);
+  const mac = (await loader.loadAsync('/models/macbook.glb')).scene;
 
   const W = () => window.innerWidth;
   const H = () => window.innerHeight;
@@ -161,20 +158,15 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     world.add(o);
     return o;
   };
-  ivy.traverse((o) => {
-    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-    if (!m) return;
-    m.roughness = Math.max(m.roughness, 0.55);
-    if (/(^|_)pot($|_|\.|\d)/i.test(o.name)) Object.assign(m, { map: null, needsUpdate: true }), m.color.set('#6d6965');
-  });
-  place(ivy, -0.29, -0.27, 0.6, 0.17);
+  // a succulent by the window
+  place(buildSucculent({ leaf: '#7aa695', rings: [11, 9, 7, 4], twist: 0.9 }), -0.285, -0.255, 1.1, 1.3);
   const pixelClock = buildPixelClock();
   place(pixelClock.group, -0.215, -0.1, 0.38);
   place(buildIcedCoffee(), -0.235, 0.05, 0.4);
-  place(buildSucculent(), 0.198, -0.17, 0.3);
-  place(buildHeadphones(), 0.285, -0.02, -0.55);
-  const lamp = buildMushroomLamp();
-  place(lamp.group, 0.285, -0.265, 0);
+  place(buildEarphones(), 0, 0, 0);
+  // the arc lamp on the right, its head reaching over towards the laptop
+  const lamp = buildArcLamp();
+  place(lamp.group, 0.285, -0.255, 0);
 
   /* ---- light: the night outside, the lamp, the LED strip, the fairy lights, the screen ---- */
   world.add(new THREE.HemisphereLight('#33477e', '#0b0806', 0.55));
@@ -256,7 +248,6 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
       camera.updateProjectionMatrix();
     }
     room.tick(t, k);
-    lamp.tick(t, k);
     pixelClock.tick();
     composer.render();
     renderCss();
@@ -773,45 +764,39 @@ function buildRoom() {
   };
 }
 
-/* ---------- a glass mushroom lamp ---------- */
+/* ---------- a minimal arc desk lamp, its head over the desk ---------- */
 
-function buildMushroomLamp() {
+function buildArcLamp() {
   const group = new THREE.Group();
-  const glass = (glow: number) =>
-    std('#c9ad86', 0.45, 0, { emissive: new THREE.Color('#ff9a3c'), emissiveIntensity: glow, transparent: true, opacity: 0.96 });
-  const capMat = glass(0.15);
-  const stemMat = glass(0.09);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.042, 0.01, 48), stemMat);
+  const black = std('#151518', 0.55, 0.35);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.046, 0.01, 48), black);
   base.position.y = 0.005;
   group.add(base);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.024, 0.115, 40), stemMat);
-  stem.position.y = 0.0675;
-  group.add(stem);
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.072, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
-  cap.scale.y = 0.72;
-  cap.position.y = 0.122;
-  group.add(cap);
-  const under = new THREE.Mesh(new THREE.CircleGeometry(0.072, 64), capMat);
-  under.rotation.x = Math.PI / 2;
-  under.position.y = 0.122;
-  group.add(under);
-  const bulb = new THREE.PointLight('#ffa552', 0.3, 0.8, 1.7);
-  bulb.position.y = 0.14;
+  const head = new THREE.Vector3(-0.13, 0.3, 0.13);
+  const arm = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.01, 0),
+    new THREE.Vector3(0, 0.2, 0.0),
+    new THREE.Vector3(-0.03, 0.31, 0.04),
+    new THREE.Vector3(-0.09, 0.335, 0.095),
+    new THREE.Vector3(head.x, head.y + 0.02, head.z),
+  ]);
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 80, 0.0035, 10), black));
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.045, 40, 1, true), std('#151518', 0.55, 0.35, { side: THREE.DoubleSide }));
+  shade.position.copy(head);
+  group.add(shade);
+  const bulb = new THREE.Mesh(new THREE.CircleGeometry(0.026, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffe2b8').multiplyScalar(1.6), toneMapped: false }));
+  bulb.rotation.x = Math.PI / 2;
+  bulb.position.set(head.x, head.y - 0.02, head.z);
   group.add(bulb);
-  const pool = new THREE.SpotLight('#ffb062', 0.5, 0.8, 1.05, 0.9, 1.8);
-  pool.position.set(0, 0.118, 0);
-  pool.target.position.set(-0.1, -0.2, 0.1);
-  pool.castShadow = true;
-  pool.shadow.mapSize.set(1024, 1024);
-  pool.shadow.bias = -0.0005;
-  pool.shadow.radius = 6;
-  group.add(pool, pool.target);
-  return {
-    group,
-    tick(t: number, k: number) {
-      capMat.emissiveIntensity = 0.15 + Math.sin(t * 0.5 * k) * 0.015 * k;
-    },
-  };
+  const beam = new THREE.SpotLight('#ffd2a0', 0.9, 0.8, 0.55, 0.8, 1.6);
+  beam.position.set(head.x, head.y - 0.02, head.z);
+  beam.target.position.set(head.x - 0.12, -0.3, head.z + 0.1);
+  beam.castShadow = true;
+  beam.shadow.mapSize.set(1024, 1024);
+  beam.shadow.bias = -0.0005;
+  beam.shadow.radius = 6;
+  group.add(beam, beam.target);
+  return { group };
 }
 
 /* ---------- a pixel LED clock, showing Bhopal time ---------- */
@@ -935,7 +920,7 @@ function buildIcedCoffee() {
 
 /* ---------- a succulent rosette in a concrete pot ---------- */
 
-function buildSucculent() {
+function buildSucculent(opts: { leaf?: string; rings?: number[]; twist?: number } = {}) {
   const g = new THREE.Group();
   const pot = new THREE.Mesh(
     new THREE.LatheGeometry([[0, 0], [0.03, 0], [0.034, 0.004], [0.036, 0.05], [0.032, 0.05], [0.03, 0.044], [0, 0.044]].map(([x, y]) => new THREE.Vector2(x, y)), 48),
@@ -947,20 +932,20 @@ function buildSucculent() {
   soil.position.y = 0.045;
   g.add(soil);
   const leafGeo = new THREE.SphereGeometry(1, 16, 10);
-  const leafMat = std('#6f9b6a', 0.6, 0, { emissive: new THREE.Color('#0b1408') });
-  [
-    { n: 9, r: 0.022, len: 0.02, tilt: 1.15, y: 0.05 },
-    { n: 7, r: 0.013, len: 0.017, tilt: 0.75, y: 0.055 },
-    { n: 5, r: 0.006, len: 0.012, tilt: 0.35, y: 0.06 },
-  ].forEach((ring, k) => {
-    for (let i = 0; i < ring.n; i++) {
+  const leafMat = std(opts.leaf ?? '#6f9b6a', 0.6, 0, { emissive: new THREE.Color('#0b1408') });
+  const counts = opts.rings ?? [9, 7, 5];
+  // rings of fleshy leaves, from wide and flat at the rim to small and upright in the middle
+  counts.forEach((n, k) => {
+    const t = counts.length > 1 ? k / (counts.length - 1) : 0;
+    const ring = { r: 0.022 - 0.017 * t, len: 0.02 - 0.009 * t, tilt: 1.15 - 0.85 * t, y: 0.05 + 0.011 * t };
+    for (let i = 0; i < n; i++) {
       const leaf = new THREE.Mesh(leafGeo, leafMat);
       leaf.scale.set(ring.len * 0.55, ring.len * 0.22, ring.len);
       leaf.position.set(0, ring.len * 0.35, ring.r);
       leaf.rotation.x = -(Math.PI / 2 - ring.tilt) * 0.6;
       const pivot = new THREE.Group();
       pivot.position.y = ring.y;
-      pivot.rotation.y = (i / ring.n) * Math.PI * 2 + k * 0.4;
+      pivot.rotation.y = (i / n) * Math.PI * 2 + k * (opts.twist ?? 0.4);
       pivot.add(leaf);
       g.add(pivot);
     }
@@ -968,32 +953,55 @@ function buildSucculent() {
   return g;
 }
 
-/* ---------- over-ear headphones, lying on the desk ---------- */
+/* ---------- wired earphones, plugged into the laptop and lying on the mat ---------- */
 
-function buildHeadphones() {
+// built in world coordinates: the laptop's right side is at x 0.152, the mat's top at y 0.003
+function buildEarphones() {
   const g = new THREE.Group();
-  const shell = std('#e8e5de', 0.55, 0.05);
-  const cushion = std('#cfcac0', 0.95);
-  const metal = std('#b9bcc4', 0.3, 0.9);
-  const span = 0.068;
-  [-1, 1].forEach((side) => {
-    const cup = new THREE.Group();
-    cup.position.set(side * span, 0, 0);
-    const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.026, 48), shell);
-    outer.position.y = 0.024;
-    const pad = new THREE.Mesh(new THREE.TorusGeometry(0.027, 0.008, 16, 40), cushion);
-    pad.rotation.x = Math.PI / 2;
-    pad.position.y = 0.008;
-    cup.add(outer, pad);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.05), metal);
-    arm.position.set(0, 0.03, -0.045);
-    cup.add(arm);
-    g.add(cup);
-  });
-  const band = new THREE.Mesh(new THREE.TorusGeometry(span, 0.007, 14, 64, Math.PI), shell);
-  band.rotation.x = -Math.PI / 2;
-  band.position.set(0, 0.012, -0.07);
-  band.scale.set(1, 0.85, 1);
-  g.add(band);
+  const white = std('#f1f1ee', 0.35);
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  const up = V(0, 1, 0);
+  const cable = (pts: THREE.Vector3[]) =>
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 160, 0.0011, 6), std('#ecebe7', 0.5)));
+  // a short cylinder from a to b
+  const rod = (a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) => {
+    const d = b.clone().sub(a);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 16), mat);
+    m.position.copy(a).addScaledVector(d, 0.5);
+    m.quaternion.setFromUnitVectors(up, d.normalize());
+    g.add(m);
+    return m;
+  };
+  // a bud: the stem carries on from the cable's end, the head sits at the stem's far end, its grille up
+  const bud = (stemEnd: THREE.Vector3, dir: THREE.Vector3, turn: number) => {
+    dir.normalize();
+    const tip = stemEnd.clone().addScaledVector(dir, 0.021);
+    rod(stemEnd, tip, 0.0027, white);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.0027, 12, 8), white);
+    cap.position.copy(stemEnd);
+    g.add(cap);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.0082, 24, 16), white);
+    head.scale.set(1, 0.78, 1);
+    head.position.copy(tip).addScaledVector(dir, 0.006);
+    head.position.y = 0.003 + 0.0082 * 0.78;
+    g.add(head);
+    const grille = new THREE.Mesh(new THREE.CircleGeometry(0.0034, 20), std('#8d8f95', 0.6, 0.5));
+    grille.position.copy(head.position).add(V(Math.cos(turn) * 0.004, 0.0058, Math.sin(turn) * 0.004));
+    grille.rotation.set(-Math.PI / 2 + 0.5, 0, turn);
+    g.add(grille);
+  };
+  // the plug in the laptop's right side, the cable dropping to the mat and looping round to a Y
+  rod(V(0.152, 0.008, -0.07), V(0.166, 0.008, -0.07), 0.0026, white);
+  const y = 0.0042;
+  const split = V(0.232, y, 0.062);
+  cable([V(0.166, 0.008, -0.07), V(0.178, 0.0062, -0.066), V(0.192, y, -0.05), V(0.205, y, -0.02), V(0.236, y, -0.006), V(0.262, y, 0.02), V(0.256, y, 0.05), split]);
+  rod(split.clone().add(V(0.003, 0, -0.004)), split.clone().add(V(-0.002, 0, 0.003)), 0.0022, white);
+  // the left bud
+  cable([split, V(0.218, y, 0.074), V(0.204, y, 0.086), V(0.194, 0.0046, 0.097)]);
+  bud(V(0.194, 0.0046, 0.097), V(-0.007, 0, 0.012), 2.2);
+  // the right bud, with the inline remote on its cable
+  cable([split, V(0.243, y, 0.079), V(0.25, y, 0.097), V(0.257, y, 0.115), V(0.262, 0.0046, 0.124)]);
+  rod(V(0.2485, 0.0046, 0.09), V(0.2525, 0.0046, 0.104), 0.0024, white);
+  bud(V(0.262, 0.0046, 0.124), V(0.004, 0, 0.012), 0.6);
   return g;
 }
