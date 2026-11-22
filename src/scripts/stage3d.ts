@@ -28,6 +28,19 @@ const MAT = 0.003; // the desk mat's thickness
 // the camera fitted to the inspiration image's laptop
 const FIT = { pos: new THREE.Vector3(-0.036, 0.362, 0.428), yaw: -1.36, pitch: -27.76, vfov: 54.3, hfov: 41.98 };
 
+// the city photo hangs far off and low outside the window; the backdrop and the drops on the glass both use this
+const CITY = { pos: new THREE.Vector3(-0.6, -0.8, -7), w: 13, h: 13 / 1.5 };
+const CITY_GRADE = /* glsl */ `
+  vec3 cityGrade(vec3 raw, vec2 uv) {
+    float lum = dot(raw, vec3(0.299, 0.587, 0.114));
+    float sky = smoothstep(0.4, 0.62, uv.y);
+    vec3 c = raw * 0.2;
+    c = mix(c * vec3(0.8, 0.85, 1.15), c * vec3(0.45, 0.62, 1.5) + vec3(0.004, 0.008, 0.032), sky);
+    float lit = smoothstep(0.14, 0.45, lum) * (1.0 - sky);
+    c += vec3(1.0, 0.82, 0.55) * lum * lit * 0.45;
+    return c + vec3(0.006, 0.009, 0.02);
+  }`;
+
 export interface Stage {
   setLevel(level: number, duration: number): void;
   prepareIntro(): void;
@@ -98,14 +111,38 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   /* ---- the laptop, with the live screen and the power key on it ---- */
   const laptop = buildLaptop(mac);
   world.add(laptop.group);
-  const screenObj = new CSS3DObject(screenEl);
-  screenObj.scale.setScalar(PX_TO_M);
-  laptop.anchor.add(screenObj);
-  const powerObj = new CSS3DObject(powerEl);
-  powerObj.scale.setScalar(PX_TO_M);
-  powerObj.rotation.x = -Math.PI / 2;
-  powerObj.position.set(0.1275, 0.0034, 0.018);
-  laptop.hinge.add(powerObj);
+  // The HTML goes in a scene of its own, 1000 times bigger, seen by a copy of the camera moved out 1000 times as far:
+  // the same picture, but in metres the screen sits a fraction of a css pixel from the eye, and at numbers that
+  // small the browser stops finding clicks on parts of it.
+  const K = 1000;
+  const cssScene = new THREE.Scene();
+  const cssCam = new THREE.PerspectiveCamera();
+  const scaleK = new THREE.Matrix4().makeScale(K, K, K);
+  const mount = (el: HTMLElement, at: THREE.Object3D) => {
+    const obj = new CSS3DObject(el);
+    obj.matrixAutoUpdate = false;
+    cssScene.add(obj);
+    return () => obj.matrix.multiplyMatrices(scaleK, at.matrixWorld);
+  };
+  const screenAt = new THREE.Object3D();
+  screenAt.scale.setScalar(PX_TO_M);
+  laptop.anchor.add(screenAt);
+  const powerAt = new THREE.Object3D();
+  powerAt.scale.setScalar(PX_TO_M);
+  powerAt.rotation.x = -Math.PI / 2;
+  powerAt.position.set(0.1275, 0.0034, 0.018);
+  laptop.hinge.add(powerAt);
+  const syncs = [mount(screenEl, screenAt), mount(powerEl, powerAt)];
+  const renderCss = () => {
+    syncs.forEach((f) => f());
+    cssCam.copy(camera);
+    cssCam.position.multiplyScalar(K);
+    cssCam.near *= K;
+    cssCam.far *= K;
+    cssCam.updateProjectionMatrix();
+    cssCam.updateMatrixWorld();
+    css.render(cssScene, cssCam);
+  };
 
   // the display washes the keys amber
   const screenLight = new THREE.RectAreaLight('#ffb347', 0.6, SCREEN_M.w, SCREEN_M.h);
@@ -222,7 +259,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     lamp.tick(t, k);
     pixelClock.tick();
     composer.render();
-    css.render(world, camera);
+    renderCss();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -487,12 +524,14 @@ function buildRoom() {
     grille.setMatrixAt(gi++, m4.compose(new THREE.Vector3((open.x0 + gx1) / 2, open.y0 + j * cell, gz), new THREE.Quaternion(), new THREE.Vector3(gx1 - open.x0, 0.0016, 0.0016)));
   group.add(grille);
 
-  /* the city below: the window looks down on it from a high floor; its sky deepened, a few windows blinking */
+  /* the city below, through rain: the window looks down on it from a high floor. Seen through wet glass it is soft,
+     its lights opening into round blobs (bright samples weigh more, as in a lens), its sky deep and hazy, a few
+     windows blinking. CITY_GRADE is shared with the drops on the glass, which see the same city sharp. */
   const cityTex = new THREE.TextureLoader().load('/images/room/night-city.jpg');
   cityTex.colorSpace = THREE.SRGBColorSpace;
   const cityU = { uTex: { value: cityTex }, uTime: { value: 0 } };
   const backdrop = new THREE.Mesh(
-    new THREE.PlaneGeometry(13, 13 / 1.5),
+    new THREE.PlaneGeometry(CITY.w, CITY.h),
     new THREE.ShaderMaterial({
       uniforms: cityU,
       depthWrite: false,
@@ -500,23 +539,187 @@ function buildRoom() {
       fragmentShader: /* glsl */ `
         uniform sampler2D uTex; uniform float uTime; varying vec2 vUv;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        ${CITY_GRADE}
         void main(){
-          vec3 c = texture2D(uTex, vUv).rgb;
-          float lum = dot(c, vec3(0.299, 0.587, 0.114));
-          float sky = smoothstep(0.4, 0.62, vUv.y);
-          c *= 0.2;
-          c = mix(c * vec3(0.8, 0.85, 1.15), c * vec3(0.45, 0.62, 1.5) + vec3(0.004, 0.008, 0.032), sky);
-          float lit = smoothstep(0.14, 0.45, lum) * (1.0 - sky);
+          vec3 acc = vec3(0.0);
+          float wsum = 0.0;
+          for (int i = 0; i < 24; i++) {
+            float a = float(i) * 2.39996;
+            float r = 0.0062 * sqrt((float(i) + 0.5) / 24.0);
+            vec3 s = texture2D(uTex, vUv + vec2(cos(a), sin(a) * 1.5) * r).rgb;
+            float l = dot(s, vec3(0.299, 0.587, 0.114));
+            float w = 1.0 + 4.0 * l * l * l;
+            acc += s * w;
+            wsum += w;
+          }
+          vec3 raw = acc / wsum;
+          vec3 c = cityGrade(raw, vUv);
+          float lum = dot(raw, vec3(0.299, 0.587, 0.114));
+          float lit = smoothstep(0.14, 0.45, lum) * (1.0 - smoothstep(0.4, 0.62, vUv.y));
           vec2 cell = floor(vUv * vec2(160.0, 110.0));
           float blink = step(0.985, hash(cell)) * step(0.5, fract(uTime * 0.07 + hash(cell + 3.1)));
-          c += vec3(1.0, 0.82, 0.55) * lum * lit * 0.4 - c * lit * blink * 0.8;
+          c -= c * lit * blink * 0.8;
           gl_FragColor = vec4(c, 1.0);
           #include <colorspace_fragment>
         }`,
     }),
   );
-  backdrop.position.set(-0.6, -0.8, -7);
+  backdrop.position.copy(CITY.pos);
   group.add(backdrop);
+
+  /* rain falling past the window: soft streaks, as a camera sees them, most faint, a few catching the light, warmer
+     near the lamp, fading into the distance */
+  const rainU = { uTime: { value: 0 } };
+  const N = 1400;
+  const quad = new THREE.PlaneGeometry(1, 1);
+  const rainGeo = new THREE.InstancedBufferGeometry();
+  rainGeo.index = quad.index;
+  rainGeo.setAttribute('position', quad.getAttribute('position'));
+  rainGeo.setAttribute('uv', quad.getAttribute('uv'));
+  const aPos = new Float32Array(N * 3);
+  const aMove = new Float32Array(N * 3); // speed, length, brightness
+  for (let i = 0; i < N; i++) {
+    aPos.set([-1.7 + Math.random() * 2.5, -2 + Math.random() * 3, -0.42 - Math.pow(Math.random(), 1.6) * 2.6], i * 3);
+    aMove.set([1.5 + Math.random() * 0.9, 0.045 + Math.random() * 0.05, 0.15 + Math.pow(Math.random(), 3) * 0.85], i * 3);
+  }
+  rainGeo.setAttribute('aPos', new THREE.InstancedBufferAttribute(aPos, 3));
+  rainGeo.setAttribute('aMove', new THREE.InstancedBufferAttribute(aMove, 3));
+  rainGeo.instanceCount = N;
+  const rain = new THREE.Mesh(
+    rainGeo,
+    new THREE.ShaderMaterial({
+      uniforms: rainU,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */ `
+        uniform float uTime; attribute vec3 aPos; attribute vec3 aMove; varying vec2 vUv; varying vec3 vCol;
+        void main(){
+          float y = mod(aPos.y - uTime * aMove.x + 2.0, 3.0) - 2.0;
+          vec3 c = vec3(aPos.x, y, aPos.z);
+          float dist = distance(c, cameraPosition);
+          float w = max(0.0009, dist * 0.0016); // never thinner than about a pixel, so it doesn't flicker
+          float energy = 0.0009 / w;
+          vec3 p = c + vec3(position.x * w + position.y * aMove.y * 0.12, position.y * aMove.y, 0.0);
+          float near = exp(-(-aPos.z - 0.42) * 0.9);
+          vec3 cool = vec3(0.55, 0.65, 0.9);
+          vec3 warm = vec3(1.0, 0.78, 0.5);
+          vCol = mix(cool, warm, smoothstep(-0.2, 0.25, aPos.x) * near) * aMove.z * (0.25 + 0.75 * near) * energy;
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv; varying vec3 vCol;
+        void main(){
+          float across = smoothstep(0.5, 0.0, abs(vUv.x - 0.5));
+          float along = sin(3.14159 * vUv.y);
+          gl_FragColor = vec4(vCol * across * along * 0.6, 1.0);
+        }`,
+    }),
+  );
+  rain.frustumCulled = false;
+  group.add(rain);
+
+  /* drops on the glass. Each is a tiny lens: the ray through it bends and lands somewhere else on the city, so a drop
+     holds a sharp, flipped little picture of the lights behind it, with a dark rim and a pin of lamp light. Some sit
+     and slowly dry, some run down and leave a wet trail. */
+  const pane = { x0: open.x0, x1: open.x1, y0: open.y0 + 0.012, y1: open.y1 };
+  const wetU = { uTime: rainU.uTime, uTex: { value: cityTex }, uCity: { value: new THREE.Vector4(CITY.pos.x, CITY.pos.y, CITY.pos.z, 0) } };
+  const wet = new THREE.Mesh(
+    new THREE.PlaneGeometry(pane.x1 - pane.x0, pane.y1 - pane.y0),
+    new THREE.ShaderMaterial({
+      uniforms: wetU,
+      transparent: true,
+      depthWrite: false,
+      vertexShader: /* glsl */ `
+        varying vec3 vW;
+        void main(){ vW = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform float uTime; uniform sampler2D uTex; uniform vec4 uCity; varying vec3 vW;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+        ${CITY_GRADE}
+        // what a drop shows: the view ray, bent by the drop's surface, carried on to the city
+        vec3 throughDrop(vec2 n) {
+          vec3 d = normalize(vW - cameraPosition);
+          d = normalize(vec3(d.xy - n * 0.55, d.z));
+          float t = (uCity.z - vW.z) / d.z;
+          vec3 q = vW + d * t;
+          vec2 uv = vec2((q.x - uCity.x) / ${CITY.w.toFixed(3)} + 0.5, (q.y - uCity.y) / ${CITY.h.toFixed(3)} + 0.5);
+          if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.01, 0.015, 0.03);
+          return cityGrade(texture2D(uTex, uv).rgb, uv);
+        }
+        vec4 drop(vec2 d, float r, float stretch) {
+          if (r <= 0.0) return vec4(0.0);
+          vec2 q = d / vec2(r, r * stretch);
+          float l = length(q);
+          if (l > 1.0) return vec4(0.0);
+          vec2 n = q * sqrt(l);                       // steeper toward the edge, like a bead of water
+          vec3 col = throughDrop(n) * 1.5 + 0.012;
+          col *= 1.0 - smoothstep(0.6, 1.0, l) * 0.55; // the darker rim
+          float hl = smoothstep(0.32, 0.0, length(q - vec2(0.35, 0.45)));
+          col += vec3(1.0, 0.78, 0.5) * hl * 0.5;      // the lamp, up and to the right
+          float a = smoothstep(1.0, 0.82, l);
+          return vec4(col, a);
+        }
+        void main(){
+          vec2 P = vW.xy;
+          vec4 col = vec4(0.0);
+          // sitting drops: they land, then slowly dry
+          float cell = 0.0105;
+          vec2 id = floor(P / cell);
+          vec2 f = fract(P / cell) - 0.5;
+          float h = hash(id);
+          if (h > 0.62) {
+            vec2 off = (vec2(hash(id + 1.3), hash(id + 7.1)) - 0.5) * 0.45;
+            float life = fract(uTime * 0.035 + h * 7.0);
+            float r = (0.1 + 0.2 * hash(id + 3.7)) * smoothstep(0.0, 0.03, life) * (1.0 - smoothstep(0.8, 1.0, life));
+            col = drop((f - off) * cell, r * cell, 1.0);
+          }
+          // runners: now and then a drop grows heavy and goes, in lurches: a quick slide, a stop, another slide,
+          // wobbling side to side, leaving a line of tiny beads behind it
+          float colW = 0.03;
+          float ci = floor(P.x / colW);
+          float hc = hash(vec2(ci, 9.0));
+          if (hc > 0.35) {
+            float top = ${pane.y1.toFixed(3)};
+            float span = top - ${pane.y0.toFixed(3)} + 0.12;
+            // one lurch per unit of sx; the pace wavers but never runs backwards
+            float sx = uTime * (0.35 + 0.5 * hc) + 0.3 * sin(uTime * 0.7 + hc * 9.0) + hc * 17.0;
+            float k = floor(sx);
+            float moving = smoothstep(0.0, 1.0, clamp(fract(sx) * 2.2, 0.0, 1.0)); // slides, then sits
+            float dist = (k + moving) * (0.014 + 0.02 * hc);
+            float y = top - mod(dist, span);
+            float wob = 0.0018;
+            float xAt = (ci + 0.3 + 0.4 * hash(vec2(ci, 2.0))) * colW;
+            float x = xAt + sin(y * 60.0 + hc * 10.0) * wob;
+            float big = 0.0024 + 0.0014 * hc;
+            vec4 run = drop(P - vec2(x, y - big * 0.25), big, 1.3);
+            col = mix(col, run, run.a);
+            col.a = max(col.a, run.a);
+            // the trail: beads left along the path above, fading as they dry
+            float above = P.y - y;
+            if (above > big && above < 0.09) {
+              float tx = xAt + sin(P.y * 60.0 + hc * 10.0) * wob;
+              float bead = 0.004;
+              float bi = floor(P.y / bead);
+              float hb = hash(vec2(ci, bi));
+              if (hb > 0.45) {
+                vec2 bc = vec2(tx, (bi + 0.5) * bead);
+                vec4 b = drop(P - bc, (0.18 + 0.2 * hash(vec2(bi, ci))) * bead * (1.0 - above / 0.09), 1.0);
+                col = mix(col, b, b.a);
+                col.a = max(col.a, b.a);
+              }
+              float wet = smoothstep(0.0005, 0.0, abs(P.x - tx)) * smoothstep(0.09, 0.0, above);
+              col = max(col, vec4(vec3(0.3, 0.36, 0.5) * wet, wet * 0.08));
+            }
+          }
+          gl_FragColor = col;
+          #include <colorspace_fragment>
+        }`,
+    }),
+  );
+  wet.position.set((pane.x0 + pane.x1) / 2, (pane.y0 + pane.y1) / 2, glassZ - 0.004);
+  group.add(wet);
 
   /* a purple LED strip along the foot of the window, glowing up the frame and the grille */
   const ledColor = new THREE.Color('#8f5cff');
@@ -560,6 +763,7 @@ function buildRoom() {
     group,
     tick(t: number, k: number) {
       cityU.uTime.value = t * k;
+      rainU.uTime.value = t;
       for (let i = 0; i < pts.length; i++) fairy.setColorAt(i, tmp.copy(warm).multiplyScalar(2.4 + Math.sin(t * 1.6 * k + phase[i]) * 0.9 * k));
       fairy.instanceColor!.needsUpdate = true;
       fLights.forEach((l, i) => (l.intensity = (i === 2 ? 0.12 : 0.18) + Math.sin(t * 1.3 * k + i) * 0.02 * k));

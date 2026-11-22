@@ -29,19 +29,66 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 let audio: AudioContext | null = null;
 let soundOn = false;
+let rainGain: GainNode | null = null;
+
+// The audio context, woken up: browsers start it paused unless a click or key press made it, so every use resumes it.
+function ctx(): AudioContext {
+  audio ??= new AudioContext();
+  if (audio.state === 'suspended') void audio.resume();
+  return audio;
+}
 
 function blip(freq = 880, dur = 0.05) {
   if (!soundOn) return;
-  audio ??= new AudioContext();
-  const o = audio.createOscillator();
-  const g = audio.createGain();
+  const a = ctx();
+  const o = a.createOscillator();
+  const g = a.createGain();
   o.type = 'square';
   o.frequency.value = freq;
-  g.gain.setValueAtTime(0.04, audio.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur);
-  o.connect(g).connect(audio.destination);
+  g.gain.setValueAtTime(0.06, a.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+  o.connect(g).connect(a.destination);
   o.start();
-  o.stop(audio.currentTime + dur);
+  o.stop(a.currentTime + dur);
+}
+
+// Soft rain outside the window while the sound is on: looped pink noise with the odd drip, filtered.
+function setRain(on: boolean) {
+  const a = ctx();
+  if (!rainGain) {
+    if (!on) return;
+    const len = a.sampleRate * 8;
+    const buf = a.createBuffer(2, len, a.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let b0 = 0;
+      let b1 = 0;
+      let b2 = 0;
+      for (let i = 0; i < len; i++) {
+        const w = Math.random() * 2 - 1;
+        b0 = 0.99765 * b0 + w * 0.099046;
+        b1 = 0.963 * b1 + w * 0.2965164;
+        b2 = 0.57 * b2 + w * 1.0526913;
+        d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.11;
+        if (Math.random() < 0.0008) d[i] += (Math.random() * 2 - 1) * 0.5;
+      }
+    }
+    const src = a.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const hp = a.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 380;
+    const lp = a.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 5200;
+    rainGain = a.createGain();
+    rainGain.gain.value = 0;
+    src.connect(hp).connect(lp).connect(rainGain).connect(a.destination);
+    src.start();
+  }
+  rainGain.gain.cancelScheduledValues(a.currentTime);
+  rainGain.gain.setTargetAtTime(on ? 0.2 : 0, a.currentTime, on ? 0.9 : 0.2);
 }
 
 let noticeTimer = 0;
@@ -71,9 +118,17 @@ function initSound() {
       localStorage.setItem('sahilos-sound', soundOn ? 'on' : 'off');
     } catch {}
     sync();
+    setRain(soundOn);
     blip(1320, 0.06);
-    notice(soundOn ? 'Sound on. Click the speaker to mute.' : 'Sound off.');
+    notice(soundOn ? 'Sound on. Rain outside.' : 'Sound off.');
   });
+  // sound left on from a visit before: start it with the first click or key press (browsers allow no sooner)
+  const wake = (e: Event) => {
+    if (e.target instanceof Node && btn.contains(e.target)) return;
+    if (soundOn) setRain(true);
+  };
+  window.addEventListener('pointerdown', wake, { once: true });
+  window.addEventListener('keydown', wake, { once: true });
 }
 
 /* ---------- clock and typing ---------- */
@@ -115,6 +170,8 @@ let level = 1;
 let camScale = 1;
 // the 3D night desk, when it runs (desktop with WebGL); otherwise the image rig below moves instead
 let stage: Stage | null = null;
+// when opening a window zoomed the camera in on its own, the framing to go back to once the last window closes
+let autoFrom: number | null = null;
 
 // The scene image in its own pixels (1084 x 1451; the file is 2x). U css px per image px: the laptop's display,
 // 641.5 px wide in the image, is the 1100px screen (global.css places everything with the same unit).
@@ -175,10 +232,12 @@ function setCamera(next: number, duration = 1.1, persist = true) {
 
 function initCamera() {
   $('zoom-in')?.addEventListener('click', () => {
+    autoFrom = null;
     blip(990);
     setCamera(level - 1);
   });
   $('zoom-out')?.addEventListener('click', () => {
+    autoFrom = null;
     blip(660);
     setCamera(level + 1);
   });
@@ -343,7 +402,11 @@ function closeWin(id: string, opts: { push?: boolean } = {}) {
     if (i > -1) openOrder.splice(i, 1);
     const next = openOrder[openOrder.length - 1];
     if (next) focusWin(next);
-    else renderDock();
+    else {
+      renderDock();
+      if (autoFrom !== null) setCamera(autoFrom, 1.1, false);
+      autoFrom = null;
+    }
     if (opts.push !== false) pushRoute(next ?? null);
     document.querySelector<HTMLElement>(`.icon[data-open="${id}"]`)?.focus({ preventScroll: true });
   };
@@ -405,6 +468,13 @@ function initDrag(el: HTMLElement) {
   });
 }
 
+// a window opened from a click: bring the camera in close to the screen (not on phones, where there is no camera)
+function zoomToScreen() {
+  if (isPhone() || level === 0) return;
+  autoFrom = level;
+  setCamera(0, 1.1, false);
+}
+
 function initWindows() {
   document.querySelectorAll<HTMLElement>('.win').forEach((el) => {
     const id = el.dataset.win!;
@@ -427,6 +497,7 @@ function initWindows() {
       if (e.metaKey || e.ctrlKey || e.shiftKey) return;
       e.preventDefault();
       openWin(a.dataset.open!);
+      zoomToScreen();
     });
   });
 
@@ -573,8 +644,10 @@ async function startDesk(saved: number | null, seen: boolean, markSeen: () => vo
   if (stage) scene.classList.add('is-3d');
   else await showImage(scene);
 
+  const rest = openOrder.length ? 0 : saved ?? restLevel();
+  if (openOrder.length) autoFrom = saved ?? restLevel();
   if (seen || reduced()) {
-    setCamera(saved ?? restLevel(), 0, saved !== null);
+    setCamera(rest, 0, saved !== null && !openOrder.length);
     typeTagline();
     markSeen();
     return;
@@ -590,7 +663,7 @@ async function startDesk(saved: number | null, seen: boolean, markSeen: () => vo
       stage!.setPower(true);
       warmUp().call(() => {
         typeTagline();
-        setCamera(saved ?? restLevel(), 2.2, saved !== null);
+        setCamera(rest, 2.2, saved !== null && !openOrder.length);
         markSeen();
       });
     });
@@ -602,7 +675,7 @@ async function startDesk(saved: number | null, seen: boolean, markSeen: () => vo
     scene.classList.remove('is-booting');
     warmUp().call(() => {
       typeTagline();
-      setCamera(saved ?? restLevel(), 2.2, saved !== null);
+      setCamera(rest, 2.2, saved !== null && !openOrder.length);
       markSeen();
     });
   });

@@ -438,25 +438,12 @@ button {
   50% { opacity: 0.35; }
 }
 
-/* credits for the 3D models (the MacBook's licence asks for one) */
-.scene-credit {
-  display: none;
-  position: fixed;
-  right: 12px;
-  bottom: 8px;
-  z-index: 1000;
-  margin: 0;
+/* credits for the 3D desk, at the foot of about.txt (the MacBook model's licence asks for one) */
+.win-credits {
+  margin: 28px 0 0;
   font-size: 11px;
-  color: rgba(236, 229, 210, 0.5);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-}
-
-.scene-credit a {
-  color: inherit;
-}
-
-.scene.is-3d .scene-credit {
-  display: block;
+  line-height: 1.6;
+  color: var(--phos-dim);
 }
 
 /* the chin only exists as a drawn part on phones; on the desk only the power key shows */
@@ -1582,7 +1569,6 @@ button {
   .room-shade,
   .room-fx,
   .scene.is-photo::before,
-  .scene-credit,
   .cam-ctrls,
   .monitor-led,
   .power-tip {
