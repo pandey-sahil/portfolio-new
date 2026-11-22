@@ -391,6 +391,12 @@ button {
   display: none;
 }
 
+/* from the whole-desk view, the screen is a button that zooms in */
+.scene.is-far .screen,
+.scene.is-far .screen * {
+  cursor: zoom-in !important;
+}
+
 /* the display in the model is 16:10 */
 .scene.is-3d .screen {
   height: 688px;
@@ -960,25 +966,36 @@ button {
   margin-top: 24px;
 }
 
+/* buttons and button-links look the same: no browser grey on a <button> */
 .btn {
   display: inline-flex;
   align-items: center;
   height: 44px;
   padding: 0 18px;
   border: 1px solid var(--phos);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
   text-decoration: none;
   font-size: 14px;
+  cursor: pointer;
   box-shadow: 3px 3px 0 var(--phos-line);
   transition: transform 0.08s steps(2), box-shadow 0.08s steps(2);
 }
 
-.btn::before {
-  content: '> ';
+/* a prompt arrow after the label on hover; Back's points back */
+.btn::after {
+  content: ' >';
   white-space: pre;
   opacity: 0;
 }
 
-.btn:hover::before {
+[data-setup-back]::after {
+  content: ' <';
+}
+
+.btn:hover::after,
+.btn:focus-visible::after {
   opacity: 1;
 }
 

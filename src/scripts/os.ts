@@ -52,13 +52,15 @@ function blip(freq = 880, dur = 0.05) {
   o.stop(a.currentTime + dur);
 }
 
-// Soft rain outside the window while the sound is on: looped pink noise with the odd drip, filtered.
+// Slow rain outside the window while the sound is on: a soft, muffled hiss heard through the glass, single drops
+// tapping the sill now and then, and the whole thing swelling and easing as the rain comes and goes.
 function setRain(on: boolean) {
   const a = ctx();
   if (!rainGain) {
     if (!on) return;
-    const len = a.sampleRate * 8;
-    const buf = a.createBuffer(2, len, a.sampleRate);
+    const rate = a.sampleRate;
+    const len = rate * 12;
+    const buf = a.createBuffer(2, len, rate);
     for (let ch = 0; ch < 2; ch++) {
       const d = buf.getChannelData(ch);
       let b0 = 0;
@@ -69,8 +71,18 @@ function setRain(on: boolean) {
         b0 = 0.99765 * b0 + w * 0.099046;
         b1 = 0.963 * b1 + w * 0.2965164;
         b2 = 0.57 * b2 + w * 1.0526913;
-        d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.11;
-        if (Math.random() < 0.0008) d[i] += (Math.random() * 2 - 1) * 0.5;
+        d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.06;
+      }
+      // drops: a few a second, each a tiny tap that dies away in a few milliseconds
+      const drops = 12 * 4;
+      for (let k = 0; k < drops; k++) {
+        const at = Math.floor(Math.random() * (len - rate * 0.05));
+        const amp = 0.08 + Math.random() * 0.18;
+        const pitch = 900 + Math.random() * 1800;
+        for (let j = 0; j < rate * 0.03; j++) {
+          const env = Math.exp(-j / (rate * 0.004));
+          d[at + j] += Math.sin((2 * Math.PI * pitch * j) / rate) * env * amp;
+        }
       }
     }
     const src = a.createBufferSource();
@@ -78,17 +90,25 @@ function setRain(on: boolean) {
     src.loop = true;
     const hp = a.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.value = 380;
+    hp.frequency.value = 180;
     const lp = a.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 5200;
+    lp.frequency.value = 2400; // muffled, through the window
+    const swell = a.createGain();
+    swell.gain.value = 0.85;
+    const lfo = a.createOscillator();
+    lfo.frequency.value = 0.06; // a slow swell, about every 16 seconds
+    const lfoDepth = a.createGain();
+    lfoDepth.gain.value = 0.15;
+    lfo.connect(lfoDepth).connect(swell.gain);
     rainGain = a.createGain();
     rainGain.gain.value = 0;
-    src.connect(hp).connect(lp).connect(rainGain).connect(a.destination);
+    src.connect(hp).connect(lp).connect(swell).connect(rainGain).connect(a.destination);
     src.start();
+    lfo.start();
   }
   rainGain.gain.cancelScheduledValues(a.currentTime);
-  rainGain.gain.setTargetAtTime(on ? 0.2 : 0, a.currentTime, on ? 0.9 : 0.2);
+  rainGain.gain.setTargetAtTime(on ? 0.16 : 0, a.currentTime, on ? 1.2 : 0.25);
 }
 
 let noticeTimer = 0;
@@ -137,13 +157,16 @@ function initClock() {
   const el = $('clock');
   if (!el) return;
   const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+  // checked every second, so it turns over with the desk clock rather than up to 10 s late
   const tick = () => {
     const now = new Date();
-    el.textContent = fmt.format(now);
+    const text = fmt.format(now);
+    if (el.textContent === text) return;
+    el.textContent = text;
     el.setAttribute('datetime', now.toISOString());
   };
   tick();
-  setInterval(tick, 10_000);
+  setInterval(tick, 1000);
 }
 
 let typeTimer = 0;
@@ -211,6 +234,7 @@ function setCamera(next: number, duration = 1.1, persist = true) {
   const cam = $('camera');
   if (!cam || isPhone()) return;
   level = Math.max(0, Math.min(2, next));
+  $('scene')?.classList.toggle('is-far', level === 2);
   const zin = $<HTMLButtonElement>('zoom-in');
   const zout = $<HTMLButtonElement>('zoom-out');
   if (zin) zin.disabled = level === 0;
@@ -476,6 +500,24 @@ function zoomToScreen() {
   setCamera(0, 1.1, false);
 }
 
+// From the whole-desk view the screen is too small to use: a click on it brings the camera in close instead.
+function initScreenZoom() {
+  const screen = $('screen');
+  if (!screen) return;
+  screen.addEventListener(
+    'click',
+    (e) => {
+      if (isPhone() || level !== 2) return;
+      e.preventDefault();
+      e.stopPropagation();
+      blip(990);
+      autoFrom = null;
+      setCamera(0);
+    },
+    true,
+  );
+}
+
 function initWindows() {
   document.querySelectorAll<HTMLElement>('.win').forEach((el) => {
     const id = el.dataset.win!;
@@ -600,6 +642,7 @@ export function initOS() {
   initPower();
   initCamera();
   initWindows();
+  initScreenZoom();
   initSetup();
 
   let saved: number | null = null;
