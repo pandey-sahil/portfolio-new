@@ -121,24 +121,28 @@ function notice(text: string) {
   noticeTimer = window.setTimeout(() => el.classList.remove('is-on'), 2600);
 }
 
+// sound on or off: remembered, shown on the dock's button, the rain following it
+function setSound(on: boolean) {
+  soundOn = on;
+  try {
+    localStorage.setItem('sahilos-sound', on ? 'on' : 'off');
+  } catch {}
+  const btn = $('sound');
+  btn?.setAttribute('aria-pressed', String(on));
+  btn?.setAttribute('aria-label', on ? 'Turn sound off' : 'Turn sound on');
+  setRain(on);
+}
+
 function initSound() {
   const btn = $('sound');
   if (!btn) return;
   try {
     soundOn = localStorage.getItem('sahilos-sound') === 'on';
   } catch {}
-  const sync = () => {
-    btn.setAttribute('aria-pressed', String(soundOn));
-    btn.setAttribute('aria-label', soundOn ? 'Turn sound off' : 'Turn sound on');
-  };
-  sync();
+  btn.setAttribute('aria-pressed', String(soundOn));
+  btn.setAttribute('aria-label', soundOn ? 'Turn sound off' : 'Turn sound on');
   btn.addEventListener('click', () => {
-    soundOn = !soundOn;
-    try {
-      localStorage.setItem('sahilos-sound', soundOn ? 'on' : 'off');
-    } catch {}
-    sync();
-    setRain(soundOn);
+    setSound(!soundOn);
     blip(1320, 0.06);
     notice(soundOn ? 'Sound on. Rain outside.' : 'Sound off.');
   });
@@ -149,6 +153,79 @@ function initSound() {
   };
   window.addEventListener('pointerdown', wake, { once: true });
   window.addEventListener('keydown', wake, { once: true });
+}
+
+/* ---------- the boot screen ---------- */
+
+// what the room is doing while it loads, by how far along it is
+const BOOT_LINES: [number, string][] = [
+  [0, 'loading the room'],
+  [0.25, 'hanging the poster'],
+  [0.45, 'brewing the coffee'],
+  [0.65, 'shelving the books'],
+  [0.85, 'starting the rain'],
+  [1, 'ready'],
+];
+let bootShown = 0;
+function bootProgress(p: number) {
+  const done = Math.max(bootShown, Math.min(1, p)); // never runs backwards
+  bootShown = done;
+  const blocks = $('boot-bar')?.children;
+  if (blocks) for (let i = 0; i < blocks.length; i++) blocks[i].classList.toggle('is-on', i < Math.round(done * blocks.length));
+  $('boot-bar')?.setAttribute('aria-valuenow', String(Math.round(done * 100)));
+  const pct = $('boot-pct');
+  if (pct) pct.textContent = `${Math.round(done * 100)}%`;
+  const status = $('boot-status');
+  const line = [...BOOT_LINES].reverse().find(([at]) => done >= at)![1];
+  if (status && status.textContent !== line) status.textContent = line;
+}
+
+// Loaded: the first time this visit, ask sound or not (that click is also what lets the browser play it); after
+// that, just fade the boot screen away. Resolves once the room is showing.
+function bootDone(): Promise<void> {
+  const boot = $('boot');
+  if (!boot) return Promise.resolve();
+  bootProgress(1);
+  let asked = false;
+  try {
+    asked = sessionStorage.getItem('sahilos-asked') === '1';
+  } catch {}
+  const leave = () =>
+    new Promise<void>((resolve) => {
+      boot.classList.add('is-leaving');
+      gsap.to(boot, { opacity: 0, duration: reduced() ? 0.01 : 0.6, delay: asked ? 0.25 : 0.05, ease: 'power2.inOut', onComplete: () => {
+        boot.hidden = true;
+        resolve();
+      } });
+    });
+  if (asked) return leave();
+  const ask = $('boot-ask');
+  if (!ask) return leave();
+  ask.hidden = false;
+  boot.classList.add('is-asking');
+  const btns = [...ask.querySelectorAll<HTMLButtonElement>('[data-boot-sound]')];
+  const preferOff = (() => {
+    try {
+      return localStorage.getItem('sahilos-sound') === 'off';
+    } catch {
+      return false;
+    }
+  })();
+  btns[preferOff ? 1 : 0]?.focus({ preventScroll: true });
+  return new Promise((resolve) => {
+    btns.forEach((b) =>
+      b.addEventListener('click', () => {
+        const on = b.dataset.bootSound === 'on';
+        setSound(on);
+        blip(on ? 1320 : 660, 0.06);
+        try {
+          sessionStorage.setItem('sahilos-asked', '1');
+        } catch {}
+        btns.forEach((x) => (x.disabled = true));
+        void leave().then(resolve);
+      }),
+    );
+  });
 }
 
 /* ---------- clock and typing ---------- */
@@ -681,10 +758,33 @@ function initStepBack() {
   document.addEventListener('click', (e) => {
     if (isPhone() || level !== 0 || !powered) return;
     const t = e.target as Element | null;
-    if (t?.closest('#screen, .cam-ctrls, .win, .monitor-power, a, button, input, textarea, select, label')) return;
+    if (t?.closest('#screen, .cam-ctrls, .room-keys, .win, .monitor-power, a, button, input, textarea, select, label')) return;
     blip(660);
     autoFrom = null;
     setCamera(outLevel);
+  });
+}
+
+// The room's keyboard shortcuts, listed: the ? button by the zoom controls, or the ? key, opens the list.
+function initRoomKeys() {
+  const btn = $<HTMLButtonElement>('room-keys-btn');
+  const panel = $('room-keys');
+  if (!btn || !panel) return;
+  const set = (open: boolean) => {
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  btn.addEventListener('click', () => {
+    blip(880);
+    set(panel.hidden);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (e.key === '?' && stage) set(panel.hidden);
+    else if (e.key === 'Escape') set(false);
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !(e.target instanceof Element && e.target.closest('#room-keys, #room-keys-btn'))) set(false);
   });
 }
 
@@ -814,6 +914,7 @@ export function initOS() {
   initWindows();
   initScreenZoom();
   initStepBack();
+  initRoomKeys();
   initRoomSounds();
   initSetup();
 
@@ -838,8 +939,10 @@ export function initOS() {
   };
 
   if (isPhone()) {
-    if (!seen) warmUp().call(markSeen);
-    typeTagline();
+    void bootDone().then(() => {
+      if (!seen) warmUp().call(markSeen);
+      typeTagline();
+    });
     return;
   }
 
@@ -850,15 +953,21 @@ export function initOS() {
 async function startDesk(saved: number | null, seen: boolean, markSeen: () => void) {
   const scene = $('scene')!;
   scene.classList.add('is-loading-3d');
+  // the 3D code is the first fifth of the bar (it creeps while it downloads), the models and textures the rest
+  let creep = 0;
+  const crept = window.setInterval(() => bootProgress((creep = Math.min(0.18, creep + 0.012))), 120);
   try {
     const { createStage } = await import('./stage3d');
-    stage = await createStage(scene);
+    clearInterval(crept);
+    stage = await createStage(scene, (done) => bootProgress(0.2 + done * 0.75));
   } catch {
     stage = null;
   }
+  clearInterval(crept);
   scene.classList.remove('is-loading-3d');
   if (stage) scene.classList.add('is-3d');
   else await showImage(scene);
+  await bootDone();
 
   const rest = openOrder.length ? 0 : saved ?? restLevel();
   if (openOrder.length) autoFrom = saved ?? restLevel();

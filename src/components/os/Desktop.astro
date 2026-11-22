@@ -39,6 +39,25 @@ const windows = [
 const beacons = [[128, 321], [253, 357], [737, 263]];
 ---
 
+<!-- the boot screen: real loading progress, then the one question, sound or not (its click also lets audio play) -->
+<div class="boot" id="boot" role="dialog" aria-modal="true" aria-labelledby="boot-mark" aria-describedby="boot-status">
+  <div class="boot-inner">
+    <p class="boot-mark" id="boot-mark">SAHIL/OS</p>
+    <div class="boot-bar" id="boot-bar" role="progressbar" aria-label="Loading the room" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      {Array.from({ length: 24 }, () => <span />)}
+    </div>
+    <p class="boot-line"><span id="boot-status">loading the room</span><span class="boot-pct" id="boot-pct">0%</span></p>
+    <div class="boot-ask" id="boot-ask" hidden>
+      <div class="boot-btns">
+        <button type="button" class="boot-btn is-primary" data-boot-sound="on">Enter with sound</button>
+        <button type="button" class="boot-btn" data-boot-sound="off">Enter without</button>
+      </div>
+      <p class="boot-note">rain, a lamp switch, a mechanical keyboard. Headphones help.</p>
+    </div>
+  </div>
+</div>
+<noscript><style>.boot { display: none !important; }</style></noscript>
+
 <div class="scene" id="scene">
   <div class="camera" id="camera">
   <div class="monitor" id="monitor">
@@ -277,9 +296,25 @@ const beacons = [[128, 321], [253, 357], [737, 263]];
   </div>
   </div>
 
-  <div class="cam-ctrls" role="group" aria-label="Camera">
+  <div class="cam-ctrls" role="group" aria-label="View">
     <button type="button" class="cam-btn" id="zoom-in" aria-label="Zoom in">+</button>
     <button type="button" class="cam-btn" id="zoom-out" aria-label="Zoom out">−</button>
+    <button type="button" class="cam-btn cam-btn-keys" id="room-keys-btn" aria-label="Room keyboard shortcuts" aria-expanded="false" aria-controls="room-keys">?</button>
+  </div>
+  <div class="room-keys" id="room-keys" hidden>
+    <p class="room-keys-title">Room keys</p>
+    <dl>
+      <div><dt><kbd>L</kbd></dt><dd>lamp on / off</dd></div>
+      <div><dt><kbd>B</kbd></dt><dd>blinds up / down</dd></div>
+      <div><dt><kbd>S</kbd></dt><dd>a sip of coffee</dd></div>
+      <div><dt><kbd>N</kbd></dt><dd>read the sticky notes</dd></div>
+      <div><dt><kbd>O</kbd></dt><dd>read the notebook</dd></div>
+      <div><dt><kbd>A</kbd></dt><dd>open the AirPods</dd></div>
+      <div><dt><kbd>P</kbd></dt><dd>the phone</dd></div>
+      <div><dt><kbd>G</kbd></dt><dd>LED colour</dd></div>
+      <div><dt><kbd>T</kbd></dt><dd>12 / 24 hour clock</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>back to the desk</dd></div>
+    </dl>
   </div>
 </div>
 

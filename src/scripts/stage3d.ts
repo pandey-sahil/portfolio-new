@@ -70,7 +70,9 @@ const shadows = (o: THREE.Object3D, cast = true, receive = true) =>
     }
   });
 
-export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
+export async function createStage(scene$: HTMLElement, onProgress?: (done: number) => void): Promise<Stage | null> {
+  // every model and texture goes through the default manager: its count is the boot screen's progress
+  THREE.DefaultLoadingManager.onProgress = (_url, loaded, total) => onProgress?.(total ? loaded / total : 0);
   const screenEl = document.getElementById('screen');
   const powerEl = document.querySelector<HTMLElement>('.monitor-power');
   if (!screenEl || !powerEl) return null;
@@ -449,6 +451,26 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     },
     clock: { tip: () => 'Switch 12 / 24 hour', run: () => (sfx('clock'), pixelClock.toggle12h()) },
   };
+  // the same things from the keyboard, for anyone not on a mouse (the list: the ? button by the zoom controls)
+  const KEYS: Record<string, string> = { l: 'lamp', b: 'blinds', s: 'mug', p: 'phone', a: 'airpods', g: 'led', t: 'clock', n: 'note', o: 'notebook' };
+  const firstNote = () => {
+    let n: THREE.Object3D | null = null;
+    world.traverse((o) => {
+      if (!n && o.userData.note) n = o;
+    });
+    return n;
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    const act = KEYS[e.key.toLowerCase()];
+    if (!act) return;
+    // the note and notebook keys take you there and, pressed again, back
+    if ((act === 'note' || act === 'notebook') && reading) return stopReading();
+    if (act === 'note') picked = firstNote();
+    actions[act].run();
+    markUsed();
+  });
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   // the first solid thing under the pointer, and the action it belongs to (if any)
@@ -492,7 +514,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   hint.className = 'stage-hint';
   hint.setAttribute('role', 'status');
   const touch = window.matchMedia('(hover: none)').matches;
-  hint.innerHTML = `<span class="stage-hint-dot" aria-hidden="true"></span>psst, the room works: ${touch ? 'tap' : 'click'} the lamp, the blinds, the mug, the notes`;
+  hint.innerHTML = `<span class="stage-hint-dot" aria-hidden="true"></span>psst, the room works: ${touch ? 'tap the lamp, the blinds, the mug, the notes' : 'click the lamp, the blinds, the mug, the notes, or press ? for keys'}`;
   scene$.append(hint);
   let hintTimer = 0;
   const hideHint = () => {
@@ -516,7 +538,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
       localStorage.setItem(HINT, '1');
     } catch {}
   };
-  const overUi = (t: EventTarget | null) => t instanceof Element && !!t.closest('#screen, .cam-ctrls, .win, .monitor-power, a, button');
+  const overUi = (t: EventTarget | null) => t instanceof Element && !!t.closest('#screen, .cam-ctrls, .room-keys, .win, .monitor-power, a, button');
   let lastPick = 0;
   window.addEventListener('pointermove', (e) => {
     if (e.timeStamp - lastPick < 90) return;
