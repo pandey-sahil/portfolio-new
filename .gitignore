@@ -25,3 +25,7 @@ pnpm-debug.log*
 
 # ShipStudio metadata
 .shipstudio/
+
+# third-party design references (not ours to publish)
+.reference/
+.taste-skill/

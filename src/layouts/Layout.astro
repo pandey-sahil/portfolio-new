@@ -1,6 +1,5 @@
 ---
 import '../styles/global.css';
-import GrainOverlay from '../components/shared/GrainOverlay.astro';
 
 interface Props {
   title?: string;
@@ -8,8 +7,8 @@ interface Props {
 }
 
 const {
-  title = 'Ship Studio Starter',
-  description = 'Sahil Pandey — creative Webflow developer building performant, motion-rich websites.',
+  title = 'Sahil Pandey — Webflow Developer',
+  description = 'Sahil Pandey, Sr. Webflow developer at Flowdojo in Bhopal. Fast, motion-rich Webflow sites built with GSAP and WebGL.',
 } = Astro.props;
 ---
 
@@ -22,27 +21,22 @@ const {
     <link rel="icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
     <meta name="description" content={description} />
+    <meta name="theme-color" content="#090806" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Silkscreen&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="/fonts/UncutSans-Variable.ttf" as="font" type="font/ttf" crossorigin />
     <title>{title}</title>
   </head>
-  <body class="bg-background text-foreground font-body antialiased">
+  <body>
     <slot />
-    <GrainOverlay />
-    <script>
-      import { initSplitHover } from '../scripts/split-hover';
-      initSplitHover();
-    </script>
   </body>
 </html>

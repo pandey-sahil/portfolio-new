@@ -1,0 +1,41 @@
+---
+interface Props {
+  id: string;
+  title: string;
+  path: string;
+  open?: boolean;
+  size?: 'md' | 'lg';
+}
+
+const { id, title, path, open = false, size = 'md' } = Astro.props;
+---
+
+<section
+  class:list={['win', `win--${size}`]}
+  id={`win-${id}`}
+  data-win={id}
+  role="dialog"
+  aria-modal="false"
+  aria-labelledby={`win-${id}-title`}
+  hidden={!open}
+  data-start-open={open ? '' : undefined}
+>
+  <header class="win-bar" data-drag>
+    <h2 class="win-title" id={`win-${id}-title`}>{title}</h2>
+    <div class="win-ctrls">
+      <button type="button" class="win-btn" data-max aria-label={`Maximise ${title}`} aria-pressed="false">
+        <span aria-hidden="true">[ ]</span>
+      </button>
+      <a class="win-btn" href="/" data-close aria-label={`Close ${title}`}>
+        <span aria-hidden="true">[x]</span>
+      </a>
+    </div>
+  </header>
+  <p class="win-path"><span class="win-path-dim">~/sahil/</span>{path}</p>
+  <div class="win-body">
+    <slot />
+  </div>
+  <footer class="win-status">
+    <slot name="status" />
+  </footer>
+</section>

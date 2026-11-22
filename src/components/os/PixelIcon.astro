@@ -1,0 +1,23 @@
+---
+import { iconRects, type PixelIconName } from '../../lib/pixel-icons';
+
+interface Props {
+  name: PixelIconName;
+  class?: string;
+}
+
+const { name, class: className } = Astro.props;
+const { rects, size } = iconRects(name);
+---
+
+<svg
+  class:list={['pixel-icon', className]}
+  viewBox={`0 0 ${size} ${size}`}
+  shape-rendering="crispEdges"
+  aria-hidden="true"
+  focusable="false"
+>
+  {rects.map((r) => (
+    <rect x={r.x} y={r.y} width="1" height="1" fill="currentColor" opacity={r.dim ? 0.4 : 1} />
+  ))}
+</svg>

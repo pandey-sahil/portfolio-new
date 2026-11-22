@@ -1,0 +1,288 @@
+---
+import PixelIcon from './PixelIcon.astro';
+import Window from './Window.astro';
+import { profile, about, education, experience, projects, stack, doneChecks, process } from '../../data/os';
+import type { PixelIconName } from '../../lib/pixel-icons';
+
+export type WindowId = 'work' | 'about' | 'experience' | 'stack' | 'notes' | 'contact';
+
+interface Props {
+  open?: WindowId;
+}
+
+const { open } = Astro.props;
+
+const icons: { id: WindowId | 'resume'; label: string; icon: PixelIconName; href: string; external?: boolean }[] = [
+  { id: 'work', label: 'work', icon: 'folder', href: '/work' },
+  { id: 'about', label: 'about.txt', icon: 'doc', href: '/about' },
+  { id: 'experience', label: 'jobs.log', icon: 'terminal', href: '/experience' },
+  { id: 'stack', label: 'stack.sys', icon: 'chip', href: '/stack' },
+  { id: 'notes', label: 'done.txt', icon: 'checklist', href: '/notes' },
+  { id: 'contact', label: 'mail', icon: 'envelope', href: '/contact' },
+  { id: 'resume', label: 'resume', icon: 'card', href: profile.resume, external: true },
+];
+
+const mail = `mailto:${profile.email}?subject=${encodeURIComponent('Project enquiry')}`;
+
+// The night-desk image's lights, in its own pixels (1084 x 1451), each on its own beat: the fairy-light bulbs
+// (x, y, glow size), city windows that go dark now and then (x, y, w, h), and the towers' red aviation lights.
+const beat = (i: number, base: number, spread: number, k: number) => (base + ((i * k) % 23) / 23 * spread).toFixed(2);
+const bulbs = [
+  [1023, 3, 34], [1010, 74, 34], [996, 134, 34], [999, 213, 34], [1000, 282, 34], [998, 354, 32], [983, 476, 22],
+  [986, 524, 30], [978, 586, 30], [973, 630, 22], [931, 654, 26], [260, 761, 22], [231, 787, 22], [260, 745, 14],
+  [260, 776, 14], [232, 800, 14],
+];
+const windows = [
+  [125, 400, 13, 8], [229, 433, 12, 8], [110, 423, 11, 7], [20, 397, 14, 8], [204, 477, 11, 8],
+  [729, 294, 18, 8], [780, 312, 13, 8], [732, 340, 10, 8], [672, 363, 15, 7],
+];
+const beacons = [[128, 321], [253, 357], [737, 263]];
+---
+
+<div class="scene" id="scene">
+  <div class="camera" id="camera">
+  <div class="monitor" id="monitor">
+    <div class="room-photo" aria-hidden="true"></div>
+    <div class="room-fx" aria-hidden="true">
+      <span class="fx-dark"></span>
+      <span class="fx-lamp"></span>
+      {bulbs.map(([x, y, r], i) => (
+        <span class="bulb" style={`--x:${x};--y:${y};--r:${r};--t:${beat(i, 2.4, 3.2, 7)}s;--d:-${beat(i, 0, 5, 11)}s`}></span>
+      ))}
+      {windows.map(([x, y, w, h], i) => (
+        <span class="city-win" style={`--x:${x};--y:${y};--w:${w};--h:${h};--t:${beat(i, 11, 10, 5)}s;--d:-${beat(i, 0, 14, 9)}s`}></span>
+      ))}
+      {beacons.map(([x, y], i) => (
+        <span class="beacon" style={`--x:${x};--y:${y};--d:-${(i * 0.83).toFixed(2)}s`}></span>
+      ))}
+      <span class="steam"><i></i><i></i><i></i></span>
+      <span class="clock-hands">
+        <i class="hand hand--h" id="hand-h"></i>
+        <i class="hand hand--m" id="hand-m"></i>
+        <i class="hand hand--s" id="hand-s"></i>
+        <b class="hand-cap"></b>
+      </span>
+    </div>
+    <div class="room-shade" aria-hidden="true"></div>
+    <div class="screen" id="screen">
+      <div class="screen-inner" id="screen-inner">
+      <header class="menubar">
+        <span class="brand"><PixelIcon name="chip" class="brand-mark" /> SAHIL/OS</span>
+        <div class="menubar-right">
+          <button type="button" class="sound" id="sound" aria-pressed="false" aria-label="Sound">
+            <PixelIcon name="mute" class="sound-off" />
+            <PixelIcon name="speaker" class="sound-on" />
+          </button>
+          <span class="menubar-city">Bhopal</span>
+          <time class="clock" id="clock">--:--</time>
+        </div>
+      </header>
+
+      <div class="desktop" id="desktop">
+        <nav class="icons" aria-label="Desktop">
+          {icons.map((i) => (
+            <a
+              class="icon"
+              href={i.href}
+              data-open={i.external ? undefined : i.id}
+              target={i.external ? '_blank' : undefined}
+              rel={i.external ? 'noopener' : undefined}
+            >
+              <PixelIcon name={i.icon} class="icon-glyph" />
+              <span class="icon-label">{i.label}</span>
+            </a>
+          ))}
+        </nav>
+
+        <section class="intro" aria-label="Introduction">
+          <p class="prompt"><span class="prompt-user">sahil@flowdojo</span>:~$ whoami</p>
+          <h1 class="name">Sahil<br />Pandey</h1>
+          <p class="role">{profile.role} at {profile.company}, {profile.city}</p>
+          <p class="tagline"><span id="typed" data-text={profile.tagline}>{profile.tagline}</span><span class="caret" aria-hidden="true"></span></p>
+          <div class="intro-actions">
+            <a class="btn btn--solid" href="/work" data-open="work">Open my work</a>
+            <a class="btn" href={mail}>Email me</a>
+          </div>
+        </section>
+
+        <Window id="work" title="work" path="work/" open={open === 'work'} size="lg">
+          <p class="win-lead">Experiments and side builds. Client work ships under Flowdojo, so ask me and I'll walk you through it.</p>
+          <ul class="projects">
+            {projects.map((p) => (
+              <li class="project">
+                <div class="project-shot">
+                  {p.image ? (
+                    <img src={p.image} alt={`Screenshot of ${p.name}`} loading="lazy" width="1200" height="750" />
+                  ) : (
+                    <pre class="project-ascii" aria-hidden="true">{`┌──────────────┐\n│  ${p.file.slice(0, 12).padEnd(12)}│\n│  no preview  │\n└──────────────┘`}</pre>
+                  )}
+                </div>
+                <div class="project-info">
+                  <h3 class="project-name">{p.name}</h3>
+                  <p class="project-meta">{p.year} · {p.stack}</p>
+                  <p class="project-summary">{p.summary}</p>
+                  <p class="project-links">
+                    {p.live && <a class="link" href={p.live} target="_blank" rel="noopener">Live site ↗</a>}
+                    <a class="link" href={p.code} target="_blank" rel="noopener">Code ↗</a>
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <span slot="status">{projects.length} items</span>
+        </Window>
+
+        <Window id="about" title="about.txt" path="about.txt" open={open === 'about'} size="lg">
+          <h3 class="win-h">Hi, I'm Sahil.</h3>
+          <div class="about-cols">
+            <div>
+              {about.map((para) => <p class="win-p">{para}</p>)}
+            </div>
+            <dl class="facts facts--side">
+              <div><dt>Based in</dt><dd>{profile.city}</dd></div>
+              <div><dt>Now</dt><dd>{profile.role}, {profile.company}</dd></div>
+              <div><dt>Since</dt><dd>Dec 2024 at Flowdojo</dd></div>
+              <div><dt>Studied</dt><dd>{education.degree}, {education.school}</dd></div>
+            </dl>
+          </div>
+
+          <section class="setup" data-setup aria-labelledby="setup-h">
+            <h3 class="win-h setup-title" id="setup-h">How I build a site</h3>
+            <div class="setup-box">
+              <p class="setup-head">
+                <span>setup.exe: your site</span>
+                <span>Step <b data-setup-n>1</b> of {process.length}</span>
+              </p>
+              <div class="setup-main">
+                <ol class="setup-steps">
+                  {process.map((s, i) => (
+                    <li>
+                      <button type="button" class="setup-step" data-step={i} aria-controls={`setup-panel-${i}`} aria-current={i === 0 ? 'step' : undefined}>
+                        <span class="setup-check" aria-hidden="true">[ ]</span>
+                        <span>{s.name}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <div class="setup-panels">
+                  {process.map((s, i) => (
+                    <div class="setup-panel" id={`setup-panel-${i}`} data-panel={i}>
+                      <h4 class="setup-panel-h">{s.name}</h4>
+                      <p class="setup-panel-p">{s.body}</p>
+                      <p class="setup-get"><span class="setup-get-k">You get</span> {s.get}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div class="setup-foot">
+                <div class="setup-bar" aria-hidden="true"><span class="setup-fill" data-setup-fill></span></div>
+                <button type="button" class="btn btn--sm" data-setup-back>Back</button>
+                <button type="button" class="btn btn--sm btn--solid" data-setup-next>Next</button>
+              </div>
+            </div>
+          </section>
+          <span slot="status">{profile.companyNote}</span>
+        </Window>
+
+        <Window id="experience" title="jobs.log" path="jobs.log" open={open === 'experience'}>
+          <ol class="log">
+            {experience.map((r) => (
+              <li class="log-entry">
+                <p class="log-time">[{r.period}]</p>
+                <h3 class="log-title">{r.title} <span class="log-at">@ {r.company}</span></h3>
+                <ul class="log-points">
+                  {r.points.map((pt) => <li>{pt}</li>)}
+                </ul>
+              </li>
+            ))}
+          </ol>
+          <span slot="status">Since Dec 2024</span>
+        </Window>
+
+        <Window id="stack" title="stack.sys" path="stack.sys" open={open === 'stack'}>
+          <div class="stack">
+            {stack.map((g) => (
+              <div class="stack-group">
+                <h3 class="stack-h">/{g.group}</h3>
+                <ul class="stack-list">
+                  {g.items.map((it) => <li>{it}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <span slot="status">Loaded</span>
+        </Window>
+
+        <Window id="notes" title="done.txt" path="done.txt" open={open === 'notes'}>
+          <h3 class="win-h">{doneChecks.title}</h3>
+          <ol class="checks">
+            {doneChecks.checks.map((c) => <li>{c}</li>)}
+          </ol>
+          <p class="win-p win-p--strong">{doneChecks.close}</p>
+          <span slot="status">From my LinkedIn</span>
+        </Window>
+
+        <Window id="contact" title="mail" path="mail" open={open === 'contact'}>
+          <h3 class="win-h">Got a Webflow build in mind?</h3>
+          <p class="win-p">Send the Figma link, the deadline and what the site has to do. I'll tell you how I'd build it.</p>
+          <dl class="facts">
+            <div><dt>Email</dt><dd><a class="link" href={mail}>{profile.email}</a></dd></div>
+            <div><dt>LinkedIn</dt><dd><a class="link" href={profile.linkedin} target="_blank" rel="noopener">in/pandey-sahil ↗</a></dd></div>
+            <div><dt>GitHub</dt><dd><a class="link" href={profile.github} target="_blank" rel="noopener">pandey-sahil ↗</a></dd></div>
+          </dl>
+          <p class="win-actions"><a class="btn btn--solid" href={mail}>Write an email</a></p>
+          <span slot="status">Bhopal, IST (UTC+5:30)</span>
+        </Window>
+      </div>
+
+      <footer class="dock">
+        <ul class="dock-launch" aria-label="Quick launch">
+          {icons.filter((i) => !i.external).map((i) => (
+            <li>
+              <a class="dock-icon" href={i.href} data-open={i.id} aria-label={i.label}>
+                <PixelIcon name={i.icon} />
+                <span class="dock-tip" aria-hidden="true">{i.label}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <p class="dock-hint" id="dock-hint">Click an icon to open it</p>
+        <ul class="dock-tabs" id="dock-tabs" aria-label="Open windows"></ul>
+        <p class="dock-ticker"><span class="dock-ticker-dot" aria-hidden="true"></span>Now: building Webflow sites at Flowdojo</p>
+        <p class="dock-notice" id="dock-notice" role="status" aria-live="polite"></p>
+      </footer>
+      </div>
+
+      <p class="screen-off" id="screen-off" hidden>Screen asleep. Press any key or the power button.</p>
+      <div class="crt" aria-hidden="true"></div>
+      <div class="glass" aria-hidden="true"></div>
+    </div>
+    <div class="monitor-chin">
+      <span class="monitor-badge" aria-hidden="true">SAHIL/OS · SP-26</span>
+      <span class="monitor-vents" aria-hidden="true"></span>
+      <span class="monitor-power">
+        <span class="monitor-led" id="power-led" aria-hidden="true"></span>
+        <button type="button" class="power-btn" id="power" aria-label="Screen power" aria-pressed="true"></button>
+        <span class="power-tip" aria-hidden="true">Power</span>
+      </span>
+    </div>
+  </div>
+  </div>
+
+  <p class="scene-credit">
+    MacBook model by <a href="https://sketchfab.com/3d-models/efab224280fd4c3993c808107f7c0b38" target="_blank" rel="noopener">timblewee</a>
+    (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>) · ivy from
+    <a href="https://polyhaven.com/a/potted_plant_02" target="_blank" rel="noopener">Poly Haven</a> · city by
+    <a href="https://unsplash.com/photos/uYQMgR0sWYA" target="_blank" rel="noopener">Note Thanun</a>
+  </p>
+
+  <div class="cam-ctrls" role="group" aria-label="Camera">
+    <button type="button" class="cam-btn" id="zoom-in" aria-label="Zoom in">+</button>
+    <button type="button" class="cam-btn" id="zoom-out" aria-label="Zoom out">−</button>
+  </div>
+</div>
+
+<script>
+  import { initOS } from '../../scripts/os';
+  initOS();
+</script>
