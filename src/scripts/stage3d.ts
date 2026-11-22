@@ -11,8 +11,6 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { gsap } from 'gsap';
 
 /* The night desk in 3D. A MacBook by a window over a city at night; around it a pixel LED clock, a mug of coffee, an
@@ -87,8 +85,6 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
 
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
-  // the poster is drawn in the site's pixel font
-  await document.fonts.load('92px Silkscreen').catch(() => {});
   const glb = (name: string) => loader.loadAsync(name).then((g) => g.scene);
   const [mac, calathea, pictureFrame, lampModel, mouseModel] = await Promise.all([
     glb('/models/macbook.glb'),
@@ -104,7 +100,7 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
   gl.setSize(W(), H());
   gl.outputColorSpace = THREE.SRGBColorSpace;
   gl.toneMapping = THREE.ACESFilmicToneMapping;
-  gl.toneMappingExposure = 1.15;
+  gl.toneMappingExposure = 1.05;
   gl.shadowMap.enabled = true;
   gl.shadowMap.type = THREE.PCFSoftShadowMap;
   // nothing that casts a shadow moves except the lid, so the shadow maps are drawn once and again only when it does
@@ -219,10 +215,12 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
     if (!mat) return;
     // the frame's glass would hide the picture: make it a faint sheen
     if (/glass/i.test(mat.name)) Object.assign(mat, { transparent: true, opacity: 0.12, roughness: 0.05, needsUpdate: true });
-    // our own picture, glowing a touch so it reads in the dark room
+    // the picture in the frame, a touch lifted so it reads in the dark room (a print doesn't glow)
     if (/artwork/i.test(mat.name)) {
-      const pic = sunsetPicture();
-      Object.assign(mat, { map: pic, emissiveMap: pic, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.35, color: new THREE.Color('#ffffff'), needsUpdate: true });
+      // a placeholder picture, until a real one goes in
+      const pic = placeholderPicture(256, 320, 'lorem');
+      pic.flipY = false; // the model's UVs are glTF's, top-down
+      Object.assign(mat, { map: pic, emissiveMap: pic, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.12, color: new THREE.Color('#ffffff'), needsUpdate: true });
     }
   });
   place(buildCharger(), -0.33, 0.2, 0.1);
@@ -247,10 +245,10 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
   /* ---- light: the night outside, the lamp, the LED strip, the screen ---- */
   world.add(new THREE.HemisphereLight('#2c3452', '#1c130c', 0.5));
   // the lamp's light, bounced off the wall and the ceiling, warming the whole corner softly
-  const bounce = new THREE.PointLight('#ff9d5c', 0.9, 2.6, 1.2);
+  const bounce = new THREE.PointLight('#ffd3ad', 0.7, 2.6, 1.2);
   bounce.position.set(0.15, 0.85, 0.15);
   world.add(bounce);
-  const windowFill = new THREE.DirectionalLight('#7f93cf', 0.4);
+  const windowFill = new THREE.DirectionalLight('#8ea3dc', 0.55);
   windowFill.position.set(-0.6, 0.6, -1.2);
   windowFill.target.position.set(-0.2, FLOOR, 1.2);
   world.add(windowFill, windowFill.target);
@@ -263,13 +261,13 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
   const applyLamp = () => {
     const v = lampLight.v;
     lamp.beam.intensity = 1.5 * v;
-    lamp.spill.intensity = 0.65 * v;
-    bounce.intensity = 0.1 + 0.8 * v;
-    shelves.glow.intensity = 0.5 * v;
-    lamp.cones.forEach((m) => (m.emissiveIntensity = 0.45 * v));
+    lamp.spill.intensity = 0.5 * v;
+    bounce.intensity = 0.1 + 0.6 * v;
+    shelves.glow.intensity = 0.12 * v;
+    lamp.cones.forEach((m) => (m.emissiveIntensity = 0.3 * v));
   };
   const windowLight = (d: number) => {
-    windowFill.intensity = 0.4 * (1 - d * 0.85);
+    windowFill.intensity = 0.55 * (1 - d * 0.85);
     cityGlow.intensity = 0.35 * (1 - d * 0.85);
   };
   const mugHome = mug.group.position.clone();
@@ -514,7 +512,7 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
   hint.className = 'stage-hint';
   hint.setAttribute('role', 'status');
   const touch = window.matchMedia('(hover: none)').matches;
-  hint.innerHTML = `<span class="stage-hint-dot" aria-hidden="true"></span>psst, the room works: ${touch ? 'tap the lamp, the blinds, the mug, the notes' : 'click the lamp, the blinds, the mug, the notes, or press ? for keys'}`;
+  hint.innerHTML = `<span class="stage-hint-dot" aria-hidden="true"></span>${touch ? 'Things in the room can be tapped.' : 'Things in the room can be clicked. Press ? for keys.'}`;
   scene$.append(hint);
   let hintTimer = 0;
   const hideHint = () => {
@@ -576,12 +574,7 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
     });
   };
   composer.addPass(ao);
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.55, 0.5, 0.88));
-  // the edges of the frame fall off a little, so the eye settles on the laptop, not the lamp
-  const vignette = new ShaderPass(VignetteShader);
-  vignette.uniforms.offset.value = 0.85;
-  vignette.uniforms.darkness.value = 1; // 1: falls off to black (above 1 goes negative and tints)
-  composer.addPass(vignette);
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(W(), H()), 0.22, 0.4, 0.94));
   composer.addPass(new OutputPass());
 
   /* ---- camera framings: 0 the screen, 1 the image's view of the desk, 2 a step back ---- */
@@ -661,7 +654,6 @@ export async function createStage(scene$: HTMLElement, onProgress?: (done: numbe
       camera.updateProjectionMatrix();
     }
     room.tick(t, k);
-    shelves.tick(t * k);
     keyGlow.tick(Math.min(0.1, (now - lastTick) / 1000));
     lastTick = now;
     pixelClock.tick();
@@ -903,7 +895,7 @@ function addStickers(laptop: THREE.Object3D) {
     g.font = 'bold 44px "Avenir Next", Helvetica, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('SHIP IT', W / 2, H / 2 + 2);
+    g.fillText('LOREM', W / 2, H / 2 + 2);
   });
   const y = 0.0072; // the deck's top, above the hinge
   heart.position.set(-0.112, y, 0.182);
@@ -922,7 +914,7 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   const m4 = new THREE.Matrix4();
 
   /* the desk: a walnut top on four legs against the wall, a carbon-weave mat on it; boards on the floor */
-  const deskWood = pbr('walnut_veneer', 1.6, 1, '#d9c2ad');
+  const deskWood = pbr('walnut_veneer', 1.6, 1, '#c9b8a6');
   const desk = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.035, 0.63), deskWood);
   desk.position.set(0.05, -0.0175, -0.015);
   desk.castShadow = desk.receiveShadow = true;
@@ -994,12 +986,24 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   leftWall.position.set(-0.5, FLOOR + 1.3, 1.67); // against the desk's left edge: the desk sits in the corner
   leftWall.receiveShadow = true;
   group.add(leftWall);
-  // a poster on the left wall, above the desk's end
-  const poster = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.48), std('#ffffff', 0.8, 0, { map: posterTexture() }));
-  poster.rotation.y = Math.PI / 2;
-  poster.position.set(-0.497, 0.47, -0.08);
-  poster.receiveShadow = true;
-  group.add(poster);
+  // on the left wall, a framed print: a placeholder until a still of real work goes in
+  const print = new THREE.Group();
+  const shot = placeholderPicture(640, 400, 'lorem ipsum');
+  const matte = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.24), std('#efece6', 0.9));
+  const pic = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.175), std('#ffffff', 0.7, 0, { map: shot }));
+  pic.position.z = 0.0008;
+  print.add(matte, pic);
+  const rim = std('#17171a', 0.55);
+  for (const [w, h, x, y] of [[0.36, 0.012, 0, 0.126], [0.36, 0.012, 0, -0.126], [0.012, 0.264, 0.174, 0], [0.012, 0.264, -0.174, 0]]) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.018), rim);
+    bar.position.set(x, y, 0.004);
+    bar.castShadow = true;
+    print.add(bar);
+  }
+  print.rotation.y = Math.PI / 2;
+  print.position.set(-0.49, 0.5, -0.06);
+  print.traverse((o) => (o.receiveShadow = true));
+  group.add(print);
   side.receiveShadow = true;
   group.add(side);
   block(-0.5, 1.05, FLOOR, FLOOR + 0.07, wallZ, wallZ + 0.012, std('#262a38', 0.8));
@@ -1375,17 +1379,12 @@ function buildShelves(m: { calathea: THREE.Object3D }) {
     }
     return y;
   };
-  // left shelf: a run, one leaning back on it, a pile with a candle on top
+  // left shelf: a run, one leaning back on it, a pile
   leaner(BOOKS[6], run(BOOKS.slice(0, 6), 0.085, top), top, 0.24);
-  const candle = buildCandle();
-  candle.group.position.set(0.38, pileUp([BOOKS[8], BOOKS[10], BOOKS[18]], 0.38, top), D + 0.06);
-  group.add(candle.group);
-  // right shelf: a short run, and a puzzle cube on a little pile
+  pileUp([BOOKS[8], BOOKS[10], BOOKS[18]], 0.38, top);
+  // right shelf: a short run and a little pile
   run(BOOKS.slice(11, 16), 0.69, top2);
-  const cube = buildCube();
-  cube.position.set(0.92, pileUp([BOOKS[9], BOOKS[17]], 0.92, top2), D + 0.06);
-  cube.rotation.y = 0.5;
-  group.add(cube);
+  pileUp([BOOKS[9], BOOKS[17]], 0.92, top2);
 
   // potted calatheas: one on the left shelf, a big one on the floor by the desk
   const potted = (clumpName: string, r: number, h: number, colour: string) => {
@@ -1420,41 +1419,73 @@ function buildShelves(m: { calathea: THREE.Object3D }) {
   floorPlant.g.rotation.y = -0.6;
   group.add(floorPlant.g);
   // a warm light over the shelves, as from the lamp
-  const glow = new THREE.PointLight('#ffb35c', 0.5, 1.0, 1.6);
+  const glow = new THREE.PointLight('#ffdcc0', 0.12, 1.0, 1.6);
   glow.position.set(0.6, 0.62, WALL + 0.3);
   group.add(glow);
   shadows(group);
-  candle.group.traverse((o) => (o.castShadow = false));
-  return { group, glow, tick: candle.tick };
+  return { group, glow };
 }
 
 type Book = { title: string; by: string; bg: string; fg: string; t: number; h: number; d: number; style: number };
-// invented titles: a front-end developer's shelf, in the loud covers design books have now
+// a placeholder image, the usual kind: pale grey, crossed corner to corner, a label in the middle
+function placeholderPicture(w: number, h: number, label: string) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#d6d3cc';
+  g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#b9b5ac';
+  g.lineWidth = Math.max(2, w / 160);
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(w, h);
+  g.moveTo(w, 0);
+  g.lineTo(0, h);
+  g.stroke();
+  g.strokeRect(1, 1, w - 2, h - 2);
+  g.fillStyle = '#d6d3cc';
+  const fs = Math.round(w / 11);
+  g.font = `600 ${fs}px "Helvetica Neue", Arial, sans-serif`;
+  const tw = g.measureText(label).width;
+  g.fillRect(w / 2 - tw / 2 - fs * 0.4, h / 2 - fs * 0.8, tw + fs * 0.8, fs * 1.6);
+  g.fillStyle = '#6f6b63';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(label, w / 2, h / 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// the shelf's books: lorem ipsum titles until real ones go in
 const BOOKS: Book[] = (
   [
-    ['MOTION', 'K. Arora', '#e8553d', '#fff3e0', 0.03, 0.2, 0.135, 0],
-    ['TYPE & GRID', 'M. Weiss', '#f2ede1', '#1d1d22', 0.024, 0.185, 0.13, 1],
-    ['SHIP IT', 'R. Rao', '#1d1d22', '#f2c14e', 0.02, 0.165, 0.11, 2],
-    ['COLOUR', 'I. Sato', '#f2c14e', '#1d1d22', 0.034, 0.21, 0.145, 3],
-    ['THINK SMALL', 'D. Lin', '#2f5d8a', '#f2ede1', 0.018, 0.175, 0.115, 0],
-    ['WEBGL NOTES', 'A. Mehta', '#7fb7a4', '#14302a', 0.026, 0.19, 0.13, 2],
-    ['LATE NIGHTS', 'S. P.', '#1f6f78', '#ffd9a8', 0.022, 0.17, 0.115, 1],
-    ['SLOW WEB', 'J. Hart', '#ff8a3d', '#1d1d22', 0.024, 0.18, 0.125, 3],
-    ['HAIKU', 'B. Ono', '#f08bb0', '#3a1426', 0.02, 0.15, 0.11, 0],
-    ['GRIDS', 'E. Moss', '#2a7a5e', '#f2ede1', 0.028, 0.16, 0.12, 2],
-    ['SKETCHBOOK', '', '#1d1d22', '#e8553d', 0.016, 0.14, 0.105, 1],
-    ['PIXELS', 'T. Ng', '#3d7bff', '#f2ede1', 0.026, 0.17, 0.12, 3],
-    ['EASING', 'C. Diaz', '#f2ede1', '#e8553d', 0.02, 0.155, 0.11, 0],
-    ['BUILD', 'H. Kim', '#e8553d', '#1d1d22', 0.03, 0.18, 0.13, 2],
-    ['QUIET', 'P. Roy', '#86a68f', '#1d1d22', 0.018, 0.145, 0.105, 1],
-    ['CSS', 'L. Vega', '#f2c14e', '#2f5d8a', 0.022, 0.16, 0.115, 0],
-    ['DRAW', 'N. Ali', '#1d1d22', '#f2ede1', 0.024, 0.165, 0.12, 3],
-    ['ZINE 04', '', '#ff8a3d', '#1d1d22', 0.012, 0.15, 0.11, 1],
-    ['FOCUS', 'O. Berg', '#34383f', '#f2c14e', 0.022, 0.14, 0.105, 2],
+    ['Lorem Ipsum', 'Lorem Ipsum', '#ece4d4', '#1c1c1f', 0.022, 0.21, 0.15, 0],
+    ['Dolor Sit Amet', 'Lorem Ipsum', '#22304a', '#ece4d4', 0.03, 0.235, 0.17, 1],
+    ['Consectetur', 'Lorem Ipsum', '#f3f1ec', '#b8432f', 0.016, 0.23, 0.15, 0],
+    ['Adipiscing Elit', 'Lorem Ipsum', '#ece4d4', '#1c1c1f', 0.026, 0.21, 0.14, 0],
+    ['Sed Do Eiusmod', 'Lorem Ipsum', '#1c1c1f', '#ece4d4', 0.032, 0.235, 0.17, 1],
+    ['Tempor', 'Lorem Ipsum', '#8a8a86', '#f3f1ec', 0.02, 0.2, 0.14, 0],
+    ['Incididunt Ut Labore', 'Lorem Ipsum', '#2f4a3a', '#ece4d4', 0.03, 0.235, 0.17, 1],
+    ['Lorem', 'Lorem Ipsum', '#ece4d4', '#1c1c1f', 0.02, 0.18, 0.12, 0],
+    ['Magna Aliqua', 'Lorem Ipsum', '#b8432f', '#f3f1ec', 0.02, 0.15, 0.11, 0],
+    ['Ut Enim', 'Lorem Ipsum', '#ece4d4', '#1c1c1f', 0.026, 0.16, 0.12, 0],
+    ['Minim Veniam', 'Lorem Ipsum', '#1c1c1f', '#f3f1ec', 0.014, 0.14, 0.105, 0],
+    ['Quis Nostrud', 'Lorem Ipsum', '#f3f1ec', '#22304a', 0.018, 0.2, 0.14, 1],
+    ['Exercitation', 'Lorem Ipsum', '#22304a', '#f3f1ec', 0.022, 0.185, 0.13, 0],
+    ['Ullamco Laboris', 'Lorem Ipsum', '#c9a03a', '#1c1c1f', 0.03, 0.2, 0.14, 0],
+    ['Nisi Ut Aliquip', 'Lorem Ipsum', '#ece4d4', '#2f4a3a', 0.022, 0.19, 0.13, 0],
+    ['Ex Ea Commodo', 'Lorem Ipsum', '#1c1c1f', '#c9a03a', 0.024, 0.18, 0.13, 1],
+    ['Duis Aute', 'Lorem Ipsum', '#1c1c1f', '#f3f1ec', 0.024, 0.165, 0.12, 0],
+    ['Irure Dolor', 'Lorem Ipsum', '#f3f1ec', '#1c1c1f', 0.012, 0.15, 0.11, 0],
+    ['Voluptate', 'Lorem Ipsum', '#b8432f', '#f3f1ec', 0.016, 0.14, 0.105, 0],
   ] as const
 ).map(([title, by, bg, fg, t, h, d, style]) => ({ title, by, bg, fg, t, h, d, style }));
 
-// a spine: the title running down it, the way it's printed, with a band, a block, stripes or a dot for a mark
+// a spine: the title running down it, the way it's printed, the author after it, a publisher's dot at the foot;
+// style 1 is a serif edition with a band at top and bottom
 function spineTexture(b: Book) {
   const c = document.createElement('canvas');
   c.width = 64;
@@ -1466,133 +1497,33 @@ function spineTexture(b: Book) {
   if (b.style === 1) {
     g.fillRect(0, 34, 64, 10);
     g.fillRect(0, 468, 64, 10);
-  } else if (b.style === 2) {
-    g.fillRect(0, 0, 64, 70);
-  } else if (b.style === 3) {
-    for (let i = 0; i < 4; i++) g.fillRect(0, 440 + i * 16, 64, 6);
   }
-  if (b.style !== 3) {
-    g.beginPath();
-    g.arc(32, 490, 7, 0, Math.PI * 2);
-    g.fill();
-  }
-  // the title, down the spine
+  g.beginPath();
+  g.arc(32, 490, 7, 0, Math.PI * 2);
+  g.fill();
   g.save();
-  g.translate(33, b.style === 2 ? 96 : 72);
+  g.translate(33, 72);
   g.rotate(Math.PI / 2);
-  g.font = `${b.style === 0 ? 800 : 600} ${b.title.length > 9 ? 24 : 30}px ${b.style === 1 ? 'Georgia, serif' : '"Helvetica Neue", Arial, sans-serif'}`;
+  const face = b.style === 1 ? 'Georgia, serif' : '"Helvetica Neue", Arial, sans-serif';
+  g.font = '400 14px "Helvetica Neue", Arial, sans-serif';
+  const byW = b.by ? g.measureText(b.by).width + 22 : 0;
+  let size = 26;
+  // the title as big as fits beside the author, down the spine's 400px of room
+  do {
+    g.font = `600 ${size}px ${face}`;
+  } while (g.measureText(b.title).width + byW > 400 && --size > 13);
   g.textBaseline = 'middle';
+  const titleW = g.measureText(b.title).width;
   g.fillText(b.title, 0, 0);
   if (b.by) {
     g.globalAlpha = 0.7;
-    g.font = '400 15px "Helvetica Neue", Arial, sans-serif';
-    g.fillText(b.by, 300, 1);
+    g.font = '400 14px "Helvetica Neue", Arial, sans-serif';
+    g.fillText(b.by, titleW + 22, 1);
   }
   g.restore();
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
-  return tex;
-}
-
-// a candle in a glass jar, burning low: a flickering flame and a warm little light
-function buildCandle() {
-  const group = new THREE.Group();
-  const jar = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.024, 0.024, 0.055, 28, 1, true),
-    new THREE.MeshStandardMaterial({ color: '#d8c9b0', roughness: 0.15, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
-  );
-  jar.position.y = 0.0275;
-  jar.userData.noAO = true;
-  const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.035, 28), std('#f1e6d2', 0.6, 0, { emissive: new THREE.Color('#ff9a4a'), emissiveIntensity: 0.25 }));
-  wax.position.y = 0.0175;
-  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0243, 0.0243, 0.02, 28, 1, true), std('#2b2f3a', 0.8));
-  label.position.y = 0.022;
-  const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.0007, 0.0007, 0.008, 6), std('#1a1410', 0.9));
-  wick.position.y = 0.039;
-  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 12, 10), new THREE.MeshBasicMaterial({ color: '#ffc27a' }));
-  flame.scale.set(1, 2.2, 1);
-  flame.position.y = 0.0475;
-  flame.userData.noAO = true;
-  const light = new THREE.PointLight('#ff9a4a', 0.12, 0.6, 2);
-  light.position.y = 0.06;
-  group.add(jar, wax, label, wick, flame, light);
-  const tick = (t: number) => {
-    const f = 0.85 + Math.sin(t * 11) * 0.06 + Math.sin(t * 23.7) * 0.05 + Math.sin(t * 5.3) * 0.04;
-    flame.scale.set(1, 2.2 * f, 1);
-    flame.position.x = Math.sin(t * 3.1) * 0.0006;
-    light.intensity = 0.12 * f;
-  };
-  return { group, tick };
-}
-
-// a puzzle cube, half solved, left lying about
-function buildCube() {
-  const g = new THREE.Group();
-  const s = 0.042;
-  const body = new THREE.Mesh(new RoundedBoxGeometry(s, s, s, 3, 0.004), std('#141416', 0.5));
-  body.position.y = s / 2;
-  g.add(body);
-  const cols = ['#f4f4f0', '#f2c14e', '#e8553d', '#ff8a3d', '#3d7bff', '#2a9a5e'];
-  const tile = new RoundedBoxGeometry(s / 3 - 0.0022, s / 3 - 0.0022, 0.0012, 2, 0.0005);
-  const mats = cols.map((c) => std(c, 0.35));
-  const faces: [THREE.Vector3, THREE.Euler, number][] = [
-    [new THREE.Vector3(0, 0, 1), new THREE.Euler(0, 0, 0), 4],
-    [new THREE.Vector3(1, 0, 0), new THREE.Euler(0, Math.PI / 2, 0), 2],
-    [new THREE.Vector3(-1, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0), 3],
-    [new THREE.Vector3(0, 0, -1), new THREE.Euler(0, Math.PI, 0), 5],
-    [new THREE.Vector3(0, 1, 0), new THREE.Euler(-Math.PI / 2, 0, 0), 0],
-  ];
-  let seed = 7;
-  const rand = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  for (const [n, rot, main] of faces) {
-    const u = new THREE.Vector3(1, 0, 0).applyEuler(rot);
-    const v = new THREE.Vector3(0, 1, 0).applyEuler(rot);
-    for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++) {
-        const m = new THREE.Mesh(tile, mats[rand() < 0.55 ? main : Math.floor(rand() * 6)]);
-        m.rotation.copy(rot);
-        m.position.set(0, s / 2, 0).addScaledVector(n, s / 2 + 0.0004).addScaledVector(u, (i * s) / 3).addScaledVector(v, (j * s) / 3);
-        g.add(m);
-      }
-  }
-  return g;
-}
-
-// the picture in the frame on the desk: a sunset over hills, warm and soft
-function sunsetPicture() {
-  const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 320;
-  const g = c.getContext('2d')!;
-  const sky = g.createLinearGradient(0, 0, 0, 220);
-  sky.addColorStop(0, '#22324a');
-  sky.addColorStop(0.55, '#e0745a');
-  sky.addColorStop(1, '#ffc27a');
-  g.fillStyle = sky;
-  g.fillRect(0, 0, 256, 320);
-  g.fillStyle = '#ffe3a8';
-  g.beginPath();
-  g.arc(128, 200, 46, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#7a3a26';
-  g.beginPath();
-  g.moveTo(0, 230);
-  g.quadraticCurveTo(70, 180, 140, 225);
-  g.quadraticCurveTo(200, 190, 256, 220);
-  g.lineTo(256, 320);
-  g.lineTo(0, 320);
-  g.fill();
-  g.fillStyle = '#2a1c16';
-  g.beginPath();
-  g.moveTo(0, 270);
-  g.quadraticCurveTo(110, 235, 256, 265);
-  g.lineTo(256, 320);
-  g.lineTo(0, 320);
-  g.fill();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.flipY = false; // glTF uvs
   return tex;
 }
 
@@ -1613,36 +1544,6 @@ function pbr(name: string, rx: number, ry: number, tint = '#ffffff') {
     roughnessMap: load('rough', false),
     roughness: 1,
   });
-}
-
-// the poster: black, an amber pixel grid fading in, a line to live by
-function posterTexture() {
-  const c = document.createElement('canvas');
-  c.width = 680;
-  c.height = 960;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#0d0b08';
-  g.fillRect(0, 0, c.width, c.height);
-  for (let y = 0; y < 30; y++)
-    for (let x = 0; x < 21; x++) {
-      const a = Math.max(0, 0.55 - Math.hypot(x - 15, y - 9) / 16);
-      if (a <= 0.02) continue;
-      g.fillStyle = `rgba(255,176,0,${a})`;
-      g.fillRect(28 + x * 30, 28 + y * 30, 18, 18);
-    }
-  g.fillStyle = '#ffb000';
-  g.font = '92px Silkscreen';
-  ['MAKE IT', 'FEEL', 'ALIVE.'].forEach((t, i) => g.fillText(t, 46, 560 + i * 104));
-  g.fillStyle = 'rgba(255,176,0,0.6)';
-  g.font = '22px "IBM Plex Mono"';
-  g.fillText('SAHIL/OS — BHOPAL', 48, 900);
-  g.strokeStyle = 'rgba(255,176,0,0.35)';
-  g.lineWidth = 3;
-  g.strokeRect(16, 16, c.width - 32, c.height - 32);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
-  return tex;
 }
 
 /* ---------- signs of work: notes, a printout, the phone, a cable ---------- */
@@ -1667,9 +1568,9 @@ function handwritten() {
   }
   g.fillStyle = '#1f2a44';
   g.font = `600 26px ${HAND}`;
-  g.fillText('today', 20, 48);
+  g.fillText('lorem ipsum', 20, 48);
   g.font = `20px ${HAND}`;
-  const items = [['hero anim (GSAP)', true], ['CMS: case studies', true], ['fix CLS /pricing', false], ['QA on mobile', false], ['client call 11:00', false], ['ship v2 !!', false]] as const;
+  const items = [['lorem ipsum dolor', true], ['sit amet', true], ['consectetur', false], ['adipiscing elit', false], ['sed do eiusmod', false]] as const;
   items.forEach(([t, done], i) => {
     const y = 90 + i * 26;
     g.fillText(`— ${t}`, 18, y);
@@ -1688,7 +1589,7 @@ function handwritten() {
   return tex;
 }
 
-// sticky notes on the wall between the poster and the window, and one on the shelf's edge
+// sticky notes on the left wall, under the print
 function buildStickies() {
   const g = new THREE.Group();
   const note = (text: string, colour: string, x: number, y: number, z: number, ry: number, rz: number) => {
@@ -1700,8 +1601,12 @@ function buildStickies() {
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.fillRect(0, 0, 512, 70); // the sticky strip
     ctx.fillStyle = '#26262c';
-    ctx.font = `78px ${HAND}`;
-    text.split('\n').forEach((line, i) => ctx.fillText(line, 44, 190 + i * 96));
+    // as big as the longest line allows across the note's 424px of writing room
+    const lines = text.split('\n');
+    let size = 78;
+    do ctx.font = `${size}px ${HAND}`;
+    while (Math.max(...lines.map((l) => ctx.measureText(l).width)) > 424 && --size > 40);
+    lines.forEach((line, i) => ctx.fillText(line, 44, 190 + i * size * 1.22));
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
@@ -1712,13 +1617,10 @@ function buildStickies() {
     m.userData.note = { text: text.replace(/\n/g, ' '), colour };
     g.add(m);
   };
-  // on the left wall, low, behind the picture frame
-  note('call Ravi\nre: launch', '#ffe27a', -0.497, 0.19, -0.2, Math.PI / 2, 0.06);
-  note('fix CLS\n/pricing', '#ff9fb2', -0.497, 0.17, -0.12, Math.PI / 2, -0.08);
-  note('GSAP\nscroll hero', '#9fd3ff', -0.497, 0.11, -0.16, Math.PI / 2, 0.03);
-  // one more in the cluster, and one on the shelf's edge
-  note('ship v2 ✓', '#b8f0a0', -0.497, 0.13, -0.06, Math.PI / 2, -0.05);
-  note('drink\nwater :)', '#ffe27a', 0.2, 0.425, WALL + 0.201, 0, 0.04);
+  // on the left wall, low, behind the picture frame: three short quotes
+  note('done is better\nthan perfect', '#ffe27a', -0.497, 0.19, -0.2, Math.PI / 2, 0.04);
+  note('make it work,\nmake it right,\nmake it fast\n— Kent Beck', '#ffe27a', -0.497, 0.175, -0.12, Math.PI / 2, -0.05);
+  note('less,\nbut better\n— Dieter Rams', '#ffe27a', -0.497, 0.105, -0.16, Math.PI / 2, 0.02);
   return g;
 }
 
@@ -1749,7 +1651,7 @@ function buildPrintout() {
   g.ellipse(150, 135, 110, 50, 0, 0, Math.PI * 2);
   g.stroke();
   g.font = `22px ${HAND}`;
-  g.fillText('more space!', 160, 255);
+  g.fillText('lorem!', 160, 255);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
@@ -1780,6 +1682,13 @@ function buildPhone() {
   g.add(screen);
   const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' });
   const draw = (message: { from: string; text: string } | null) => {
+    if (!message) {
+      // idle: the screen is off, as a phone on a desk is
+      ctx.fillStyle = '#060607';
+      ctx.fillRect(0, 0, 240, 500);
+      tex.needsUpdate = true;
+      return;
+    }
     const sky = ctx.createLinearGradient(0, 0, 0, 500);
     sky.addColorStop(0, '#0f2234');
     sky.addColorStop(1, '#b0552a');
@@ -1814,7 +1723,7 @@ function buildPhone() {
   return {
     group: g,
     // a message arrives: the screen lights up, then dims back down
-    notify(from = 'Client', text = 'can we ship today? 🙏') {
+    notify(from = 'Lorem', text = 'ipsum dolor sit amet?') {
       draw({ from, text });
       gsap.killTweensOf(glass.color);
       glass.color.setScalar(1);
@@ -2083,13 +1992,13 @@ function buildLamp(model: THREE.Object3D) {
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (!m) return;
     // the inside of the cone glows with the bulb
-    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.45 }), cones.push(m);
+    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffe9d2'), emissiveIntensity: 0.3 }), cones.push(m);
   });
   model.scale.setScalar(S);
   group.add(model);
   // the cone's mouth, in the lamp's own (unscaled) frame
   const head = new THREE.Vector3(1.38 * S, 4.35 * S, 1.45 * S);
-  const beam = new THREE.SpotLight('#ffcf98', 1.5, 0.9, 0.6, 0.85, 1.6);
+  const beam = new THREE.SpotLight('#ffe4c6', 1.5, 0.9, 0.6, 0.85, 1.6);
   beam.position.copy(head);
   beam.target.position.set(head.x + 0.08, -0.3, head.z + 0.09);
   beam.castShadow = true;
@@ -2098,14 +2007,14 @@ function buildLamp(model: THREE.Object3D) {
   beam.shadow.radius = 6;
   group.add(beam, beam.target);
   // the light that spills out round the shade, warming the wall and the books
-  const spill = new THREE.PointLight('#ffa860', 0.65, 1.5, 1.4);
+  const spill = new THREE.PointLight('#ffd6b0', 0.5, 1.5, 1.4);
   spill.position.set(head.x - 0.02, head.y + 0.03, head.z - 0.05);
   group.add(spill);
   group.userData.interact = 'lamp';
   return { group, beam, spill, cones };
 }
 
-/* ---------- a pixel LED clock, showing Bhopal time ---------- */
+/* ---------- a pixel LED clock, showing the local time ---------- */
 
 const DIGITS: Record<string, string[]> = {
   '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
@@ -2246,50 +2155,12 @@ function buildMug() {
   coffee.rotation.x = -Math.PI / 2;
   coffee.position.y = H - 0.011;
   g.add(coffee);
-  // steam: two soft wisps, always turned to the viewer, curling up and thinning out
-  const steamU = { uTime: { value: 0 } };
   const wisps: THREE.Mesh[] = [];
-  for (let i = 0; i < 2; i++) {
-    const w = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.05, 0.12),
-      new THREE.ShaderMaterial({
-        uniforms: { uTime: steamU.uTime, uSeed: { value: i * 7.3 } },
-        transparent: true,
-        depthWrite: false,
-        vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-        fragmentShader: /* glsl */ `
-          uniform float uTime; uniform float uSeed; varying vec2 vUv;
-          float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-          float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-            return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
-          void main(){
-            float t = uTime * 0.35 + uSeed;
-            float y = vUv.y;
-            float x = vUv.x - 0.5 + sin(y * 6.0 - t * 2.2) * 0.1 * y + sin(y * 13.0 - t * 3.1) * 0.03;
-            float wisp = n(vec2(x * 5.0, y * 3.2 - t * 1.6)) * 0.65 + n(vec2(x * 11.0, y * 7.0 - t * 2.6)) * 0.35;
-            float col = smoothstep(0.26 * (0.5 + y), 0.0, abs(x));
-            float fade = smoothstep(0.0, 0.18, y) * smoothstep(1.0, 0.4, y);
-            float a = col * fade * smoothstep(0.42, 0.78, wisp) * 0.15;
-            gl_FragColor = vec4(vec3(0.93, 0.91, 0.88), a);
-          }`,
-      }),
-    );
-    w.position.set(i ? 0.006 : -0.005, H + 0.058, i ? -0.004 : 0.003);
-    w.userData.noAO = true;
-    wisps.push(w);
-    g.add(w);
-  }
   return {
     group: g,
     coffee,
     wisps,
-    tick(t: number, cam: THREE.Camera) {
-      steamU.uTime.value = t;
-      wisps.forEach((w) => {
-        const p = w.getWorldPosition(new THREE.Vector3());
-        w.rotation.y = Math.atan2(cam.position.x - p.x, cam.position.z - p.z) - g.rotation.y;
-      });
-    },
+    tick(_t: number, _cam: THREE.Camera) {},
   };
 }
 

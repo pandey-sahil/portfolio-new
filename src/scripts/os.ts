@@ -157,13 +157,10 @@ function initSound() {
 
 /* ---------- the boot screen ---------- */
 
-// what the room is doing while it loads, by how far along it is
+// the status under the bar: plain, what is happening
 const BOOT_LINES: [number, string][] = [
-  [0, 'loading the room'],
-  [0.25, 'hanging the poster'],
-  [0.45, 'brewing the coffee'],
-  [0.65, 'shelving the books'],
-  [0.85, 'starting the rain'],
+  [0, 'loading'],
+  [0.2, 'loading the room'],
   [1, 'ready'],
 ];
 let bootShown = 0;
@@ -186,9 +183,10 @@ function bootDone(): Promise<void> {
   const boot = $('boot');
   if (!boot) return Promise.resolve();
   bootProgress(1);
-  let asked = false;
+  // ?view= links (shared framings, screenshots) go straight in, without the question
+  let asked = new URLSearchParams(location.search).has('view');
   try {
-    asked = sessionStorage.getItem('sahilos-asked') === '1';
+    asked ||= sessionStorage.getItem('sahilos-asked') === '1';
   } catch {}
   const leave = () =>
     new Promise<void>((resolve) => {
@@ -618,7 +616,7 @@ function focusWin(id: string) {
 }
 
 function syncTitle(id: string | null) {
-  document.title = id ? `${TITLES[id]} — Sahil Pandey` : 'Sahil Pandey — Webflow Developer';
+  document.title = id ? `${TITLES[id]} — Sahil Pandey` : 'Sahil Pandey';
 }
 
 function pushRoute(id: string | null) {
@@ -1017,7 +1015,7 @@ async function showImage(scene: HTMLElement) {
   initRoomClock();
 }
 
-// The desk clock's hands (the image's own are painted out), on Bhopal time like the menu bar.
+// The desk clock's hands (the image's own are painted out), on the same time as the menu bar.
 function initRoomClock() {
   const h = $('hand-h');
   const m = $('hand-m');

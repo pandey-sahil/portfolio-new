@@ -589,9 +589,8 @@ button {
 /* camera buttons */
 .cam-ctrls {
   position: fixed;
-  left: 12px;
-  top: 50%;
-  translate: 0 -50%;
+  right: 16px;
+  bottom: 16px;
   z-index: 1000;
   display: grid;
   gap: 4px;
@@ -636,9 +635,8 @@ button {
 }
 .room-keys {
   position: fixed;
-  left: 74px;
-  top: 50%;
-  translate: 0 -50%;
+  right: 16px;
+  bottom: 172px; /* just above the controls: three 44px buttons, their gaps and padding */
   z-index: 1000;
   padding: 12px 16px 10px;
   border-radius: 10px;
