@@ -185,6 +185,160 @@ function typeTagline() {
   typeTimer = window.setTimeout(step, 200);
 }
 
+/* ---------- room sounds: the lamp, the blinds, the mug... all made here, no audio files ---------- */
+
+let noiseBuf: AudioBuffer | null = null;
+function noise(a: AudioContext) {
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuf;
+}
+type Shape = { gain: number; attack?: number };
+// a hiss through a filter: clicks, rustles, rattles, slurps
+function burst(at: number, dur: number, type: BiquadFilterType, f: number, o: Shape & { q?: number; f2?: number }) {
+  const a = ctx();
+  const t = a.currentTime + at;
+  const src = a.createBufferSource();
+  src.buffer = noise(a);
+  src.loop = true;
+  const flt = a.createBiquadFilter();
+  flt.type = type;
+  flt.frequency.setValueAtTime(f, t);
+  if (o.f2) flt.frequency.exponentialRampToValueAtTime(o.f2, t + dur);
+  flt.Q.value = o.q ?? 1;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.gain, t + (o.attack ?? 0.002));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(flt).connect(g).connect(a.destination);
+  src.start(t, Math.random() * 0.5);
+  src.stop(t + dur + 0.02);
+}
+// a pitched ping: ceramic, glass, a little chime
+function tone(at: number, freq: number, dur: number, o: Shape & { type?: OscillatorType; f2?: number }) {
+  const a = ctx();
+  const t = a.currentTime + at;
+  const osc = a.createOscillator();
+  osc.type = o.type ?? 'sine';
+  osc.frequency.setValueAtTime(freq, t);
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t + dur);
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(o.gain, t + (o.attack ?? 0.004));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(g).connect(a.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+const rnd = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+
+const SFX: Record<string, () => void> = {
+  // a desk-lamp push switch: press and release
+  'lamp-on': () => {
+    burst(0, 0.015, 'highpass', 2200, { gain: 0.35 });
+    tone(0, 190, 0.05, { gain: 0.2, f2: 90 });
+    burst(0.07, 0.012, 'highpass', 2600, { gain: 0.18 });
+  },
+  'lamp-off': () => {
+    burst(0, 0.015, 'highpass', 1800, { gain: 0.35 });
+    tone(0, 150, 0.05, { gain: 0.2, f2: 75 });
+    burst(0.06, 0.012, 'highpass', 2200, { gain: 0.15 });
+  },
+  // slats clattering against each other as the blind runs, over the cord's soft hiss
+  'blinds-close': () => blinds(1),
+  'blinds-open': () => blinds(-1),
+  led: () => {
+    tone(0, 1650, 0.035, { gain: 0.04, type: 'triangle' });
+    tone(0.045, 2475, 0.05, { gain: 0.035, type: 'triangle' });
+  },
+  // a sticky note, peeled a touch off the wall
+  note: () => {
+    burst(0, 0.22, 'bandpass', 2400, { gain: 0.12, q: 0.8, attack: 0.04 });
+    burst(0.12, 0.12, 'bandpass', 3800, { gain: 0.06, q: 1.2, attack: 0.02 });
+  },
+  // lift off the desk, a slurp, a gulp, and the mug knocking back down
+  sip: () => {
+    burst(0.02, 0.1, 'lowpass', 900, { gain: 0.06 });
+    for (let i = 0; i < 4; i++) burst(0.72 + i * 0.09 + rnd(0, 0.03), 0.11, 'bandpass', 700 + i * 220, { gain: 0.16, q: 5, f2: 1300 + i * 260, attack: 0.02 });
+    tone(1.28, 320, 0.13, { gain: 0.22, f2: 115 });
+    tone(2.16, 130, 0.07, { gain: 0.25, f2: 70 });
+    tone(2.16, 2650, 0.3, { gain: 0.05 });
+    tone(2.16, 4120, 0.18, { gain: 0.025 });
+  },
+  // the phone buzzing against the desk, then its chime
+  phone: () => {
+    const a = ctx();
+    const t = a.currentTime;
+    const osc = a.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 155;
+    const flt = a.createBiquadFilter();
+    flt.type = 'lowpass';
+    flt.frequency.value = 420;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    [0, 0.3].forEach((s) => {
+      g.gain.setTargetAtTime(0.14, t + s, 0.01);
+      g.gain.setTargetAtTime(0.0001, t + s + 0.24, 0.015);
+    });
+    osc.connect(flt).connect(g).connect(a.destination);
+    osc.start(t);
+    osc.stop(t + 0.65);
+    tone(0.62, 1318.5, 0.5, { gain: 0.07 });
+    tone(0.76, 1975.5, 0.7, { gain: 0.06 });
+  },
+  // a mechanical key bottoming out: a soft clack and the low thock of the case
+  key: () => {
+    burst(0, 0.02, 'bandpass', rnd(2600, 3400), { gain: 0.1, q: 2 });
+    tone(0, rnd(330, 380), 0.045, { gain: 0.1, f2: 160 });
+  },
+  'key-big': () => {
+    burst(0, 0.03, 'bandpass', 2000, { gain: 0.1, q: 1.5 });
+    tone(0, 220, 0.07, { gain: 0.14, f2: 110 });
+    burst(0.015, 0.02, 'highpass', 4000, { gain: 0.03 });
+  },
+  // the AirPods case: the lid's magnet letting go and the hinge swinging up; then snapping shut
+  'case-open': () => {
+    burst(0, 0.012, 'bandpass', 3600, { gain: 0.12, q: 3 });
+    tone(0, 520, 0.05, { gain: 0.05, f2: 700 });
+    burst(0.02, 0.2, 'bandpass', 1800, { gain: 0.03, q: 1, attack: 0.05, f2: 3000 });
+    tone(0.75, 1046.5, 0.25, { gain: 0.035 });
+    tone(0.86, 1568, 0.35, { gain: 0.03 });
+  },
+  'case-close': () => {
+    burst(0.26, 0.018, 'bandpass', 2600, { gain: 0.25, q: 2 });
+    tone(0.26, 260, 0.06, { gain: 0.2, f2: 120 });
+  },
+  // the clock's little button
+  clock: () => {
+    burst(0, 0.008, 'highpass', 3200, { gain: 0.3 });
+    tone(0, 950, 0.025, { gain: 0.05, type: 'square' });
+    burst(0.055, 0.008, 'highpass', 3600, { gain: 0.16 });
+  },
+};
+
+function blinds(dir: 1 | -1) {
+  burst(0, 1.4, 'bandpass', dir > 0 ? 1400 : 900, { gain: 0.05, q: 0.7, attack: 0.25, f2: dir > 0 ? 800 : 1500 });
+  let t = 0.05;
+  while (t < 1.35) {
+    // the slats bunch up as the blind speeds up in the middle, and thin out at the ends
+    const mid = 1 - Math.abs(t / 1.4 - 0.5) * 2;
+    burst(t, 0.018, 'bandpass', rnd(2800, 5200), { gain: rnd(0.06, 0.16) * (0.5 + mid), q: 4 });
+    t += rnd(0.03, 0.07) * (1.4 - mid * 0.7);
+  }
+  burst(1.38, 0.03, 'lowpass', 600, { gain: 0.2 });
+}
+
+function initRoomSounds() {
+  window.addEventListener('stage-sfx', (e) => {
+    if (!soundOn) return;
+    SFX[(e as CustomEvent<string>).detail]?.();
+  });
+}
+
 /* ---------- camera ---------- */
 // Three framings of the night-desk image: 0 the screen fills the view, 1 the desk around the laptop, 2 the whole image.
 
@@ -195,6 +349,8 @@ let camScale = 1;
 let stage: Stage | null = null;
 // when opening a window zoomed the camera in on its own, the framing to go back to once the last window closes
 let autoFrom: number | null = null;
+// the framing the camera came from into the screen close-up: a click beside the screen goes back to it
+let outLevel = 1;
 
 // The scene image in its own pixels (1084 x 1451; the file is 2x). U css px per image px: the laptop's display,
 // 641.5 px wide in the image, is the 1100px screen (global.css places everything with the same unit).
@@ -233,7 +389,9 @@ function restLevel() {
 function setCamera(next: number, duration = 1.1, persist = true) {
   const cam = $('camera');
   if (!cam || isPhone()) return;
+  const was = level;
   level = Math.max(0, Math.min(2, next));
+  if (level === 0 && was !== 0) outLevel = was;
   $('scene')?.classList.toggle('is-far', level === 2);
   const zin = $<HTMLButtonElement>('zoom-in');
   const zout = $<HTMLButtonElement>('zoom-out');
@@ -518,6 +676,18 @@ function initScreenZoom() {
   );
 }
 
+// In close on the screen, a click anywhere around it (the bezel, the room) steps back out to where the camera was.
+function initStepBack() {
+  document.addEventListener('click', (e) => {
+    if (isPhone() || level !== 0 || !powered) return;
+    const t = e.target as Element | null;
+    if (t?.closest('#screen, .cam-ctrls, .win, .monitor-power, a, button, input, textarea, select, label')) return;
+    blip(660);
+    autoFrom = null;
+    setCamera(outLevel);
+  });
+}
+
 function initWindows() {
   document.querySelectorAll<HTMLElement>('.win').forEach((el) => {
     const id = el.dataset.win!;
@@ -643,6 +813,8 @@ export function initOS() {
   initCamera();
   initWindows();
   initScreenZoom();
+  initStepBack();
+  initRoomSounds();
   initSetup();
 
   let saved: number | null = null;

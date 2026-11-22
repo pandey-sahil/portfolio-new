@@ -391,6 +391,34 @@ button {
   display: none;
 }
 
+/* things in the room you can click: a pointer, and a little label saying what they do */
+.scene.is-pointing {
+  cursor: pointer;
+}
+
+.stage-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1001;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(14, 11, 8, 0.85);
+  box-shadow: 0 0 0 1px rgba(255, 176, 0, 0.35);
+  color: var(--phos);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.scene.is-pointing .stage-tip {
+  opacity: 1;
+}
+
 /* from the whole-desk view, the screen is a button that zooms in */
 .scene.is-far .screen,
 .scene.is-far .screen * {
@@ -1764,4 +1792,32 @@ button {
   * {
     transition: none !important;
   }
+}
+
+/* ---------- the cursor: a small amber pixel arrow; an amber ring over anything you can click ---------- */
+
+:root {
+  --cur-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' shape-rendering='crispEdges'%3E%3Cpath d='M2 2h2v2h2v2h2v2h2v2h2v2h2v2h-4v2h2v2h2v2h-2v2h-2v-2h-2v-2h-2v2h-2v2h-2z' fill='%231a1206'/%3E%3Cpath d='M4 5h2v2h2v2h2v2h2v2h-4v2h2v2h2v2h-2v-2h-2v-2h-2v2h-2z' fill='%23ffb000'/%3E%3C/svg%3E") 2 2, auto;
+  --cur-hand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ccircle cx='14' cy='14' r='9' fill='none' stroke='%231a1206' stroke-width='4'/%3E%3Ccircle cx='14' cy='14' r='9' fill='rgba(255,176,0,0.15)' stroke='%23ffb000' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='2' fill='%23ffb000'/%3E%3C/svg%3E") 14 14, pointer;
+}
+
+html,
+body {
+  cursor: var(--cur-arrow);
+}
+
+a,
+button,
+.btn,
+.icon,
+.dock-icon,
+.dock-tab,
+.win-btn,
+.setup-step,
+.cam-btn,
+.power-btn,
+.scene.is-pointing,
+.scene.is-far .screen,
+.scene.is-far .screen * {
+  cursor: var(--cur-hand) !important;
 }

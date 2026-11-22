@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { CSS3DRenderer, CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -13,7 +14,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { gsap } from 'gsap';
 
 /* The night desk in 3D. A MacBook by a window over a city at night; around it a pixel LED clock, a mug of coffee, an
-   a succulent in a concrete pot, an arc desk lamp, wired EarPods, a mechanical keyboard, a mouse, books, a charging pad,
+   a succulent in a concrete pot, an arc desk lamp, an AirPods case, a mechanical keyboard, a mouse, books, a charging pad,
    a notebook, headphones on a stand and a purple LED strip, on a walnut desk on legs; shelves above it with books, a
    monstera and a sleeping cat.
    The layout and the camera were measured off the inspiration image (the camera fitted to its laptop to about 10 px).
@@ -75,6 +76,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   let gl: THREE.WebGLRenderer;
   try {
     gl = new THREE.WebGLRenderer({ antialias: true });
+    gl.localClippingEnabled = true; // the AirPods case's lid is cut from its shell
   } catch {
     return null;
   }
@@ -84,10 +86,9 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   // the poster is drawn in the site's pixel font
   await document.fonts.load('92px Silkscreen').catch(() => {});
   const glb = (name: string) => loader.loadAsync(name).then((g) => g.scene);
-  const [mac, calathea, encyclopedias, pictureFrame, lampModel, mouseModel] = await Promise.all([
+  const [mac, calathea, pictureFrame, lampModel, mouseModel] = await Promise.all([
     glb('/models/macbook.glb'),
     glb('/models/room/calathea_orbifolia_01.glb'),
-    glb('/models/room/book_encyclopedia_set_01.glb'),
     glb('/models/room/standing_picture_frame_01.glb'),
     glb('/models/room/lamp.glb'),
     glb('/models/room/mouse.glb'),
@@ -181,18 +182,28 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   // a succulent by the window
   place(buildSucculent({ leaf: '#7aa695', rings: [11, 9, 7, 4], twist: 0.9 }), -0.285, -0.255, 1.1, 1.3);
   const pixelClock = buildPixelClock();
+  pixelClock.group.userData.interact = 'clock';
   place(pixelClock.group, -0.215, -0.1, 0.38);
   const mug = buildMug();
+  mug.group.userData.interact = 'mug';
   place(mug.group, -0.232, 0.05, 2.4);
-  place(buildEarPods(), 0, 0, 0);
+  const airpods = buildAirPods();
+  place(airpods.group, 0.25, 0.1, -0.3);
+  airpods.group.position.y = MAT;
+  airpods.sync();
   const keyboard = buildKeyboard();
   place(keyboard.group, 0.0, 0.205, 0.0);
   const keyGlow = buildKeyGlow(mac);
   keyGlow.mesh.userData.noAO = true;
   world.add(keyGlow.mesh);
+  const held = new Set<string>();
   const onKey = (e: KeyboardEvent, isDown: boolean) => {
     keyboard.press(e.code, isDown);
     keyGlow.press(e.code, isDown);
+    // a thock under each press (not the auto-repeat), deeper for the big keys
+    if (isDown && !held.has(e.code)) window.dispatchEvent(new CustomEvent('stage-sfx', { detail: /Space|Enter|Backspace|Shift/.test(e.code) ? 'key-big' : 'key' }));
+    if (isDown) held.add(e.code);
+    else held.delete(e.code);
   };
   window.addEventListener('keydown', (e) => onKey(e, true));
   window.addEventListener('keyup', (e) => onKey(e, false));
@@ -211,15 +222,19 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
     }
   });
   place(buildCharger(), -0.33, 0.2, 0.1);
-  place(buildNotebook(), 0.48, 0.1, -0.25);
+  const notebook = place(buildNotebook(), 0.48, 0.1, -0.25);
+  notebook.userData.interact = 'notebook';
   // signs someone works here: to-dos stuck to the wall, a wireframe printout under the keyboard, the phone face down
   // on its charger, the laptop's cable trailing off the back of the desk
   place(buildStickies(), 0, 0, 0);
   place(buildPrintout(), -0.21, 0.19, 0.42);
-  place(buildPhone(), -0.33, 0.2, 0.35);
+  const phoneKit = buildPhone();
+  const phone = phoneKit.group;
+  phone.userData.interact = 'phone';
+  place(phone, -0.33, 0.2, 0.35);
   place(buildChargingCable(), 0, 0, 0);
   place(buildPowerStrip(), 0.55, -0.22, 0);
-  const shelves = buildShelves({ calathea, encyclopedias });
+  const shelves = buildShelves({ calathea });
   place(shelves.group, 0, 0, 0);
   // the arc lamp on the right, its head reaching over towards the laptop
   const lamp = buildLamp(lampModel);
@@ -238,6 +253,253 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   const cityGlow = new THREE.DirectionalLight('#7891d8', 0.35);
   cityGlow.position.set(-0.7, 1.3, -2.4);
   world.add(cityGlow);
+
+  /* ---- things in the room to click: the lamp, the blinds, the LED strip, the mug, the phone, the clock ---- */
+  const lampLight = { v: 1 };
+  const applyLamp = () => {
+    const v = lampLight.v;
+    lamp.beam.intensity = 1.5 * v;
+    lamp.spill.intensity = 0.9 * v;
+    bounce.intensity = 0.1 + 0.8 * v;
+    shelves.glow.intensity = 0.5 * v;
+    lamp.cones.forEach((m) => (m.emissiveIntensity = 0.8 * v));
+  };
+  const windowLight = (d: number) => {
+    windowFill.intensity = 0.4 * (1 - d * 0.85);
+    cityGlow.intensity = 0.35 * (1 - d * 0.85);
+  };
+  const mugHome = mug.group.position.clone();
+  const mugQuat = mug.group.quaternion.clone();
+  const sip = { p: 0, busy: false };
+  const phoneHome = phone.position.clone();
+  // a sticky note, read close up: the camera flies to it; a click anywhere or Escape flies back
+  let picked: THREE.Object3D | null = null;
+  let pickedKey: number | null = null;
+  let reading = false;
+  // the picture frame stands right in front of the low notes: it fades out while they're read, and back after
+  const frameMats: { m: THREE.Material; opacity: number; transparent: boolean }[] = [];
+  pictureFrame.traverse((o) => {
+    const m = (o as THREE.Mesh).material;
+    if (m) (Array.isArray(m) ? m : [m]).forEach((x) => frameMats.push({ m: x, opacity: x.opacity, transparent: x.transparent }));
+  });
+  const frameFade = { v: 1 };
+  const setFrameFade = () => {
+    const v = frameFade.v;
+    frameMats.forEach(({ m, opacity, transparent }) => {
+      const t = transparent || v < 1;
+      if (m.transparent !== t) Object.assign(m, { transparent: t, needsUpdate: true });
+      m.opacity = opacity * v;
+      m.depthWrite = v === 1;
+    });
+    pictureFrame.visible = v > 0.01;
+    gl.shadowMap.needsUpdate = true;
+  };
+  const fadeFrame = (show: boolean) => {
+    gsap.killTweensOf(frameFade);
+    gsap.to(frameFade, { v: show ? 1 : 0, duration: 0.5, delay: show ? 0.45 : 0.15, ease: 'power1.inOut', onUpdate: setFrameFade });
+  };
+  const blocks = (obj: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) => {
+    const c = new THREE.Box3().setFromObject(obj).getCenter(new THREE.Vector3());
+    return new THREE.Line3(from, to).closestPointToPoint(c, true, new THREE.Vector3()).distanceTo(c) < 0.16;
+  };
+  const readNote = (note: THREE.Object3D) => {
+    const here = note.getWorldPosition(new THREE.Vector3());
+    const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(note.getWorldQuaternion(new THREE.Quaternion()));
+    // the notes on the same wall, close by: frame them all together
+    const box = new THREE.Box3();
+    world.traverse((o) => {
+      if (!o.userData.note) return;
+      const p = o.getWorldPosition(new THREE.Vector3());
+      const f = new THREE.Vector3(0, 0, 1).applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion()));
+      if (p.distanceTo(here) < 0.25 && f.dot(facing) > 0.9) box.expandByPoint(p);
+    });
+    const at = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const across = Math.max(Math.abs(size.x * facing.z) + Math.abs(size.z * facing.x), 0) + 0.11;
+    const tall = size.y + 0.11;
+    const t = Math.tan(THREE.MathUtils.degToRad(34) / 2);
+    const dist = Math.max(tall / 2 / t, across / 2 / (t * camera.aspect), 0.12);
+    flyTo(at, facing, dist);
+  };
+  const flyTo = (at: THREE.Vector3, facing: THREE.Vector3, dist: number) => {
+    const from = at.clone().addScaledVector(facing, dist);
+    reading = true;
+    if (blocks(pictureFrame, from, at)) fadeFrame(false);
+    gsap.killTweensOf(cam);
+    gsap.to(cam, { px: from.x, py: from.y, pz: from.z, tx: at.x, ty: at.y, tz: at.z, fov: 34, duration: 1.2, ease: 'power3.inOut' });
+  };
+  // the notebook, from above and a little in front, its page filling the view the right way up
+  const readNotebook = () => {
+    const at = notebook.localToWorld(new THREE.Vector3(0, MAT + 0.012, 0));
+    const front = new THREE.Vector3(0, 0, 1).transformDirection(notebook.matrixWorld).setY(0).normalize();
+    const facing = new THREE.Vector3(0, 1, 0).addScaledVector(front, 0.38).normalize();
+    const t = Math.tan(THREE.MathUtils.degToRad(34) / 2);
+    flyTo(at, facing, Math.max(0.25 / 2 / t, 0.2 / 2 / (t * camera.aspect)));
+  };
+  const stopReading = () => {
+    if (!reading) return;
+    reading = false;
+    if (frameFade.v < 1) fadeFrame(true);
+    const v = views()[level];
+    gsap.killTweensOf(cam);
+    gsap.to(cam, { px: v.pos.x, py: v.pos.y, pz: v.pos.z, tx: v.target.x, ty: v.target.y, tz: v.target.z, fov: v.fov, duration: 1.1, ease: 'power3.inOut' });
+  };
+  window.addEventListener('keydown', (e) => e.key === 'Escape' && stopReading());
+  let caseOpen = false;
+  // sounds for the things in the room: os.ts plays them, when the sound is on
+  const sfx = (name: string) => window.dispatchEvent(new CustomEvent('stage-sfx', { detail: name }));
+  const actions: Record<string, { tip: () => string; run: () => void }> = {
+    notebook: {
+      tip: () => 'Read the notebook',
+      run: () => {
+        sfx('note');
+        readNotebook();
+      },
+    },
+    key: {
+      tip: () => 'Press a key',
+      run: () => {
+        if (pickedKey === null) return;
+        const code = keyboard.codeAt(pickedKey);
+        onKey({ code } as KeyboardEvent, true);
+        setTimeout(() => onKey({ code } as KeyboardEvent, false), 110);
+      },
+    },
+    note: {
+      tip: () => 'Read the note',
+      run: () => {
+        if (!picked) return;
+        sfx('note');
+        readNote(picked);
+      },
+    },
+    lamp: {
+      tip: () => (lampLight.v > 0.5 ? 'Turn the lamp off' : 'Turn the lamp on'),
+      run: () => (sfx(lampLight.v > 0.5 ? 'lamp-off' : 'lamp-on'), gsap.to(lampLight, { v: lampLight.v > 0.5 ? 0 : 1, duration: 0.18, ease: 'power1.out', onUpdate: applyLamp })),
+    },
+    blinds: {
+      tip: () => (room.blinds.d > 0.5 ? 'Open the blinds' : 'Close the blinds'),
+      run: () => {
+        if (gsap.isTweening(room.blinds)) return;
+        sfx(room.blinds.d > 0.5 ? 'blinds-open' : 'blinds-close');
+        gsap.to(room.blinds, {
+          d: room.blinds.d > 0.5 ? 0 : 1,
+          duration: 1.4,
+          ease: 'power2.inOut',
+          onUpdate: () => {
+            room.setBlinds();
+            windowLight(room.blinds.d);
+            gl.shadowMap.needsUpdate = true;
+          },
+        });
+      },
+    },
+    led: { tip: () => 'Change the LED colour', run: () => (sfx('led'), room.nextLed()) },
+    mug: {
+      tip: () => 'Take a sip',
+      run: () => {
+        if (sip.busy) return;
+        sip.busy = true;
+        sfx('sip');
+        const toCam = camera.position.clone().sub(mugHome);
+        const lifted = mugHome.clone().addScaledVector(toCam, 0.32).add(new THREE.Vector3(0, 0.05, 0));
+        const flat = toCam.clone().setY(0).normalize();
+        const tipped = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0).cross(flat).normalize(), 0.8).multiply(mugQuat);
+        const apply = () => {
+          mug.group.position.lerpVectors(mugHome, lifted, sip.p);
+          mug.group.quaternion.slerpQuaternions(mugQuat, tipped, Math.max(0, sip.p * 1.6 - 0.6));
+          mug.wisps.forEach((w) => (w.visible = sip.p < 0.15));
+        };
+        gsap
+          .timeline({ onComplete: () => (sip.busy = false) })
+          .to(sip, { p: 1, duration: 0.9, ease: 'power2.inOut', onUpdate: apply })
+          .call(() => (mug.coffee.position.y = Math.max(0.035, mug.coffee.position.y - 0.006)))
+          .to(sip, { p: 0, duration: 0.8, ease: 'power2.inOut', onUpdate: apply }, '+=0.5');
+      },
+    },
+    phone: {
+      tip: () => 'Someone’s texting',
+      run: () => {
+        if (gsap.isTweening(phone.position)) return;
+        sfx('phone');
+        phoneKit.notify();
+        gsap.fromTo(phone.position, { x: phoneHome.x - 0.0015 }, { x: phoneHome.x + 0.0015, duration: 0.04, repeat: 13, yoyo: true, ease: 'none', onComplete: () => phone.position.copy(phoneHome) });
+      },
+    },
+    airpods: {
+      tip: () => (caseOpen ? 'Close the case' : 'Open the AirPods'),
+      run: () => {
+        if (gsap.isTweening(airpods.state)) return;
+        const opening = !caseOpen;
+        caseOpen = opening;
+        sfx(opening ? 'case-open' : 'case-close');
+        gsap.to(airpods.state, {
+          open: opening ? 1 : 0,
+          duration: opening ? 0.6 : 0.3,
+          ease: opening ? 'back.out(1.6)' : 'power2.in',
+          onUpdate: () => {
+            airpods.sync();
+            gl.shadowMap.needsUpdate = true;
+          },
+        });
+        if (opening) gsap.delayedCall(0.7, () => phoneKit.notify('AirPods Pro', 'Connected  ·  100%'));
+      },
+    },
+    clock: { tip: () => 'Switch 12 / 24 hour', run: () => (sfx('clock'), pixelClock.toggle12h()) },
+  };
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  // the first solid thing under the pointer, and the action it belongs to (if any)
+  const pick = (cx: number, cy: number) => {
+    ndc.set((cx / W()) * 2 - 1, -(cy / H()) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    for (const hit of ray.intersectObjects(world.children, true)) {
+      let o: THREE.Object3D | null = hit.object;
+      let act: string | null = null;
+      let skip = false;
+      while (o) {
+        if (o.userData.noAO && !o.userData.pickable) {
+          skip = true;
+          break;
+        }
+        if (o.userData.interact) {
+          act = o.userData.interact;
+          picked = o;
+          pickedKey = hit.instanceId ?? null;
+          break;
+        }
+        o = o.parent;
+      }
+      if (skip) continue;
+      return act;
+    }
+    return null;
+  };
+  const tip = document.createElement('p');
+  tip.className = 'stage-tip';
+  tip.setAttribute('aria-hidden', 'true');
+  scene$.append(tip);
+  const overUi = (t: EventTarget | null) => t instanceof Element && !!t.closest('#screen, .cam-ctrls, .win, .monitor-power, a, button');
+  let lastPick = 0;
+  window.addEventListener('pointermove', (e) => {
+    if (e.timeStamp - lastPick < 90) return;
+    lastPick = e.timeStamp;
+    // in close on the screen, a click anywhere else steps back out (os.ts does the stepping)
+    const act = overUi(e.target) ? null : reading || level === 0 ? 'back' : pick(e.clientX, e.clientY);
+    scene$.classList.toggle('is-pointing', !!act);
+    if (act) {
+      tip.textContent = act === 'back' ? 'Back to the desk' : actions[act].tip();
+      tip.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 16}px)`;
+    }
+  });
+  window.addEventListener('click', (e) => {
+    if (overUi(e.target) || level === 0) return;
+    if (reading) return stopReading();
+    const act = pick(e.clientX, e.clientY);
+    if (!act) return;
+    actions[act].run();
+    tip.textContent = actions[act].tip();
+  });
 
   /* ---- post: bloom, so the lights glow the way they do in a photo ---- */
   const composer = new EffectComposer(gl);
@@ -334,6 +596,7 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
       camera.updateProjectionMatrix();
     }
     room.tick(t, k);
+    shelves.tick(t * k);
     keyGlow.tick(Math.min(0.1, (now - lastTick) / 1000));
     lastTick = now;
     pixelClock.tick();
@@ -374,6 +637,8 @@ export async function createStage(scene$: HTMLElement): Promise<Stage | null> {
   return {
     setLevel(next, duration) {
       level = next;
+      reading = false;
+      if (frameFade.v < 1) fadeFrame(true);
       const v = views()[level];
       const to = { px: v.pos.x, py: v.pos.y, pz: v.pos.z, tx: v.target.x, ty: v.target.y, tz: v.target.z, fov: v.fov };
       gsap.killTweensOf(cam);
@@ -680,18 +945,31 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   block(open.x1, open.x1 + 0.04, open.y0, open.y1, wallZ - 0.02, wallZ + 0.02, frameMat);
   block(open.x1 - 0.045, open.x1, open.y0, open.y1, glassZ - 0.02, glassZ + 0.015, std('#9ea3ad', 0.5));
   block(open.x1 - 0.034, open.x1 - 0.028, 0.32, 0.46, glassZ + 0.015, glassZ + 0.03, std('#d8dbe0', 0.35, 0.8));
-  // the blinds, a quarter of the way down, slats tilted
+  // the blinds: a full set of slats, stacked up near the top, that can come down to the sill and close
   const slat = std('#d4d7de', 0.6);
-  for (let i = 0; i < 8; i++) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry(open.x1 - open.x0 + 0.03, 0.006, 0.03), slat);
-    s.position.set((open.x0 + open.x1) / 2, open.y1 - 0.015 - i * 0.024, wallZ + 0.03);
-    s.rotation.x = 0.4;
-    s.castShadow = true;
-    group.add(s);
+  const slats: THREE.Mesh[] = [];
+  const NS = 34;
+  for (let i = 0; i < NS; i++) {
+    const sl = new THREE.Mesh(new THREE.BoxGeometry(open.x1 - open.x0 + 0.03, 0.006, 0.03), slat);
+    sl.castShadow = true;
+    sl.userData.interact = 'blinds';
+    group.add(sl);
+    slats.push(sl);
   }
+  const blinds = { d: 0 };
+  const setBlinds = () => {
+    const top = open.y1 - 0.015;
+    const bottom = THREE.MathUtils.lerp(open.y1 - 0.19, open.y0 + 0.014, blinds.d);
+    slats.forEach((sl, i) => {
+      sl.position.set((open.x0 + open.x1) / 2, top - (i / (NS - 1)) * (top - bottom), wallZ + 0.03);
+      sl.rotation.x = THREE.MathUtils.lerp(0.4, 1.42, blinds.d);
+    });
+  };
+  setBlinds();
   block(open.x0 - 0.02, open.x1 + 0.02, open.y1 - 0.004, open.y1 + 0.026, wallZ + 0.01, wallZ + 0.05, slat);
   const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0018, 0.32, 6), slat);
   cord.position.set(open.x1 - 0.07, open.y1 - 0.18, wallZ + 0.055);
+  cord.userData.interact = 'blinds';
   group.add(cord);
 
   /* the city below, through rain: the window looks down on it from a high floor. Seen through wet glass it is soft,
@@ -894,6 +1172,14 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
   ledWash.position.set((open.x0 + open.x1) / 2, 0.016, wallZ + 0.006);
   ledWash.rotation.x = Math.PI; // and out over the desk
   group.add(ledWash);
+  // a fatter, invisible target round the strip, so it's easy to click
+  const ledHit = new THREE.Mesh(new THREE.BoxGeometry(ledW, 0.035, 0.03), new THREE.MeshBasicMaterial({ visible: false }));
+  ledHit.position.copy(led.position);
+  ledHit.userData.interact = 'led';
+  group.add(ledHit);
+  const LEDS = ['#8f5cff', '#3d7bff', '#ff4fa3', null];
+  let ledAt = 0;
+  let ledBase = 2;
 
   return {
     group,
@@ -901,7 +1187,22 @@ function buildRoom(cityTex: THREE.Texture, cityBlur: THREE.Texture) {
       cityU.uTime.value = t * k;
       rainU.uTime.value = t;
       // the LED strip breathes, slowly
-      ledLight.intensity = 2 + Math.sin(t * 0.6 * k) * 0.3 * k;
+      ledLight.intensity = ledBase * (1 + Math.sin(t * 0.6 * k) * 0.15 * k);
+    },
+    blinds,
+    setBlinds,
+    // the next colour along: purple, blue, pink, off
+    nextLed() {
+      ledAt = (ledAt + 1) % LEDS.length;
+      const c = LEDS[ledAt];
+      ledBase = c ? 2 : 0;
+      ledWash.intensity = c ? 0.4 : 0;
+      if (c) {
+        ledLight.color.set(c);
+        ledWash.color.set(c);
+        (led.material as THREE.MeshBasicMaterial).color.set(c).multiplyScalar(2.2);
+      } else (led.material as THREE.MeshBasicMaterial).color.set('#1a1820');
+      return c ? 'on' : 'off';
     },
   };
 }
@@ -937,13 +1238,13 @@ function buildNotebook() {
   page.position.y = MAT + 0.0122;
   const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.14, 8), std('#1c1c20', 0.4, 0.4));
   pen.rotation.set(0, 0.4, Math.PI / 2);
-  pen.position.set(0, MAT + 0.018, 0.01);
+  pen.position.set(0, MAT + 0.018, 0.065); // below the list, not across it
   g.add(cover, page, pen);
   return g;
 }
 
 // a wall shelf right of the window: real books and a calathea in a pot (models from Poly Haven, CC0)
-function buildShelves(m: { calathea: THREE.Object3D; encyclopedias: THREE.Object3D }) {
+function buildShelves(m: { calathea: THREE.Object3D }) {
   const group = new THREE.Group();
   const wood = std('#ffffff', 0.6, 0, { map: woodTexture() });
   const bracket = std('#2a1a10', 0.7);
@@ -963,52 +1264,61 @@ function buildShelves(m: { calathea: THREE.Object3D; encyclopedias: THREE.Object
   const top = shelf(0.33, Y, 0.5);
   const top2 = shelf(0.83, 0.64, 0.34); // a second, higher shelf on the right
 
-  // the books, one at a time out of the encyclopedia set, in a few cover colours, arranged as books really sit:
-  // a run standing, a couple leaning, a few lying in a pile
-  const BS = 0.6;
-  const tints = ['#ffffff', '#7d8fb8', '#86a68f', '#d9b56c', '#a3a3a3', '#5f6270'];
-  const book = (n: number, x: number, y: number, rz: number, ry: number, tint: number) => {
-    const node = m.encyclopedias.getObjectByName(`book_encyclopedia_set_01_book${String(n).padStart(2, '0')}`);
-    if (!node) return 0;
-    node.position.set(0, 0, 0);
-    node.rotation.set(0, 0, 0);
-    node.updateMatrixWorld(true);
-    const bb = new THREE.Box3().setFromObject(node);
+  // the books: today's paperbacks and design books, loud spines in all sizes, arranged as books really sit:
+  // a run standing, one leaning on it, a few lying in a pile, and a couple of things that live on a shelf
+  const D = WALL + 0.012; // the books stand back against the wall
+  const pages = std('#efe6d2', 0.95);
+  const rng = (() => {
+    let seed = 11;
+    return () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  })();
+  const book = (b: Book, x: number, y: number, flat = false, rz = 0) => {
+    const cover = std(b.bg, 0.55 + rng() * 0.25);
+    const spine = std('#ffffff', 0.6, 0, { map: spineTexture(b) });
+    // faces: +x/-x the covers, +y/-y the page edges, +z the spine, -z the fore-edge against the wall
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(b.t, b.h, b.d, 2, 0.0016), [cover, cover, pages, pages, spine, pages]);
     const holder = new THREE.Group();
-    holder.add(node);
-    node.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
-    if (tint) {
-      node.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.isMesh) {
-          mesh.material = (mesh.material as THREE.MeshStandardMaterial).clone();
-          (mesh.material as THREE.MeshStandardMaterial).color.set(tints[tint]);
-        }
-      });
+    holder.add(mesh);
+    if (flat) {
+      // on its back cover, spine still facing out, the title reading along the shelf
+      holder.rotation.set(0, (rng() - 0.5) * 0.12, Math.PI / 2);
+      holder.position.set(x, y + b.t / 2, D + b.d / 2);
+    } else {
+      // standing: pivoting on its bottom edge, so it can lean
+      mesh.position.y = b.h / 2;
+      holder.rotation.set(0, (rng() - 0.5) * 0.06, rz);
+      holder.position.set(x, y, D + b.d / 2);
     }
-    holder.scale.setScalar(BS);
-    holder.position.set(x, y, WALL + 0.1);
-    holder.rotation.set(0, ry, rz);
     group.add(holder);
-    return (bb.max.x - bb.min.x) * BS; // its thickness
   };
-  // left shelf: six standing, two leaning on them, a pile of three lying flat
-  let x = 0.1;
-  [[1, 0], [2, 1], [3, 0], [4, 3], [5, 0], [6, 2]].forEach(([n, t], i) => {
-    const w = book(n, x + 0.01, top, 0, (i % 3) * 0.03 - 0.03, t);
-    x += w + 0.002;
-  });
-  book(7, x + 0.025, top, -0.32, 0.02, 4);
-  book(8, x + 0.05, top, -0.36, -0.03, 0);
-  [[9, 5], [10, 0], [11, 2]].forEach(([n, t], i) => book(n, 0.375 + i * 0.004, top + 0.002 + i * 0.022, Math.PI / 2, i * 0.08 - 0.05, t));
-  // right shelf: a short run, a leaner, a small pile
-  x = 0.69;
-  [[12, 1], [13, 0], [14, 3], [15, 2]].forEach(([n, t]) => {
-    const w = book(n, x + 0.01, top2, 0, 0, t);
-    x += w + 0.002;
-  });
-  book(16, x + 0.03, top2, -0.3, 0, 5);
-  [[17, 0], [18, 4]].forEach(([n, t], i) => book(n, 0.92 + i * 0.006, top2 + 0.002 + i * 0.022, Math.PI / 2, 0.1 - i * 0.12, t));
+  const run = (list: Book[], x: number, y: number) => {
+    for (const b of list) {
+      x += b.t / 2;
+      book(b, x, y);
+      x += b.t / 2 + 0.0015;
+    }
+    return x;
+  };
+  // a book leaning back on the run's last one: its top edge resting against it
+  const leaner = (b: Book, end: number, y: number, a: number) => book(b, end + Math.sin(a) * b.h + (b.t / 2) * Math.cos(a), y, false, a);
+  const pileUp = (list: Book[], x: number, y: number) => {
+    for (const b of list) {
+      book(b, x + (rng() - 0.5) * 0.008, y, true);
+      y += b.t;
+    }
+    return y;
+  };
+  // left shelf: a run, one leaning back on it, a pile with a candle on top
+  leaner(BOOKS[6], run(BOOKS.slice(0, 6), 0.085, top), top, 0.24);
+  const candle = buildCandle();
+  candle.group.position.set(0.38, pileUp([BOOKS[8], BOOKS[10], BOOKS[18]], 0.38, top), D + 0.06);
+  group.add(candle.group);
+  // right shelf: a short run, and a puzzle cube on a little pile
+  run(BOOKS.slice(11, 16), 0.69, top2);
+  const cube = buildCube();
+  cube.position.set(0.92, pileUp([BOOKS[9], BOOKS[17]], 0.92, top2), D + 0.06);
+  cube.rotation.y = 0.5;
+  group.add(cube);
 
   // potted calatheas: one on the left shelf, a big one on the floor by the desk
   const potted = (clumpName: string, r: number, h: number, colour: string) => {
@@ -1034,7 +1344,7 @@ function buildShelves(m: { calathea: THREE.Object3D; encyclopedias: THREE.Object
   };
   const shelfPlant = potted('calathea_orbifolia_01_b', 0.06, 0.085, '#e6e1d8');
   shelfPlant.leaves.scale.setScalar(0.52);
-  shelfPlant.g.position.set(0.51, top, WALL + 0.1);
+  shelfPlant.g.position.set(0.52, top, WALL + 0.1);
   shelfPlant.g.rotation.y = 0.4;
   group.add(shelfPlant.g);
   const floorPlant = potted('calathea_orbifolia_01_a', 0.15, 0.3, '#3b3a40');
@@ -1047,7 +1357,139 @@ function buildShelves(m: { calathea: THREE.Object3D; encyclopedias: THREE.Object
   glow.position.set(0.6, 0.62, WALL + 0.3);
   group.add(glow);
   shadows(group);
-  return { group };
+  candle.group.traverse((o) => (o.castShadow = false));
+  return { group, glow, tick: candle.tick };
+}
+
+type Book = { title: string; by: string; bg: string; fg: string; t: number; h: number; d: number; style: number };
+// invented titles: a front-end developer's shelf, in the loud covers design books have now
+const BOOKS: Book[] = (
+  [
+    ['MOTION', 'K. Arora', '#e8553d', '#fff3e0', 0.03, 0.2, 0.135, 0],
+    ['TYPE & GRID', 'M. Weiss', '#f2ede1', '#1d1d22', 0.024, 0.185, 0.13, 1],
+    ['SHIP IT', 'R. Rao', '#1d1d22', '#f2c14e', 0.02, 0.165, 0.11, 2],
+    ['COLOUR', 'I. Sato', '#f2c14e', '#1d1d22', 0.034, 0.21, 0.145, 3],
+    ['THINK SMALL', 'D. Lin', '#2f5d8a', '#f2ede1', 0.018, 0.175, 0.115, 0],
+    ['WEBGL NOTES', 'A. Mehta', '#7fb7a4', '#14302a', 0.026, 0.19, 0.13, 2],
+    ['LATE NIGHTS', 'S. P.', '#6c4cc4', '#ffd7f0', 0.022, 0.17, 0.115, 1],
+    ['SLOW WEB', 'J. Hart', '#ff8a3d', '#1d1d22', 0.024, 0.18, 0.125, 3],
+    ['HAIKU', 'B. Ono', '#f08bb0', '#3a1426', 0.02, 0.15, 0.11, 0],
+    ['GRIDS', 'E. Moss', '#2a7a5e', '#f2ede1', 0.028, 0.16, 0.12, 2],
+    ['SKETCHBOOK', '', '#1d1d22', '#e8553d', 0.016, 0.14, 0.105, 1],
+    ['PIXELS', 'T. Ng', '#3d7bff', '#f2ede1', 0.026, 0.17, 0.12, 3],
+    ['EASING', 'C. Diaz', '#f2ede1', '#e8553d', 0.02, 0.155, 0.11, 0],
+    ['BUILD', 'H. Kim', '#e8553d', '#1d1d22', 0.03, 0.18, 0.13, 2],
+    ['QUIET', 'P. Roy', '#86a68f', '#1d1d22', 0.018, 0.145, 0.105, 1],
+    ['CSS', 'L. Vega', '#f2c14e', '#2f5d8a', 0.022, 0.16, 0.115, 0],
+    ['DRAW', 'N. Ali', '#1d1d22', '#f2ede1', 0.024, 0.165, 0.12, 3],
+    ['ZINE 04', '', '#ff8a3d', '#1d1d22', 0.012, 0.15, 0.11, 1],
+    ['FOCUS', 'O. Berg', '#6c4cc4', '#f2ede1', 0.022, 0.14, 0.105, 2],
+  ] as const
+).map(([title, by, bg, fg, t, h, d, style]) => ({ title, by, bg, fg, t, h, d, style }));
+
+// a spine: the title running down it, the way it's printed, with a band, a block, stripes or a dot for a mark
+function spineTexture(b: Book) {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 512;
+  const g = c.getContext('2d')!;
+  g.fillStyle = b.bg;
+  g.fillRect(0, 0, 64, 512);
+  g.fillStyle = b.fg;
+  if (b.style === 1) {
+    g.fillRect(0, 34, 64, 10);
+    g.fillRect(0, 468, 64, 10);
+  } else if (b.style === 2) {
+    g.fillRect(0, 0, 64, 70);
+  } else if (b.style === 3) {
+    for (let i = 0; i < 4; i++) g.fillRect(0, 440 + i * 16, 64, 6);
+  }
+  if (b.style !== 3) {
+    g.beginPath();
+    g.arc(32, 490, 7, 0, Math.PI * 2);
+    g.fill();
+  }
+  // the title, down the spine
+  g.save();
+  g.translate(33, b.style === 2 ? 96 : 72);
+  g.rotate(Math.PI / 2);
+  g.font = `${b.style === 0 ? 800 : 600} ${b.title.length > 9 ? 24 : 30}px ${b.style === 1 ? 'Georgia, serif' : '"Helvetica Neue", Arial, sans-serif'}`;
+  g.textBaseline = 'middle';
+  g.fillText(b.title, 0, 0);
+  if (b.by) {
+    g.globalAlpha = 0.7;
+    g.font = '400 15px "Helvetica Neue", Arial, sans-serif';
+    g.fillText(b.by, 300, 1);
+  }
+  g.restore();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// a candle in a glass jar, burning low: a flickering flame and a warm little light
+function buildCandle() {
+  const group = new THREE.Group();
+  const jar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.024, 0.024, 0.055, 28, 1, true),
+    new THREE.MeshStandardMaterial({ color: '#d8c9b0', roughness: 0.15, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  jar.position.y = 0.0275;
+  jar.userData.noAO = true;
+  const wax = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.035, 28), std('#f1e6d2', 0.6, 0, { emissive: new THREE.Color('#ff9a4a'), emissiveIntensity: 0.25 }));
+  wax.position.y = 0.0175;
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(0.0243, 0.0243, 0.02, 28, 1, true), std('#2b2f3a', 0.8));
+  label.position.y = 0.022;
+  const wick = new THREE.Mesh(new THREE.CylinderGeometry(0.0007, 0.0007, 0.008, 6), std('#1a1410', 0.9));
+  wick.position.y = 0.039;
+  const flame = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 12, 10), new THREE.MeshBasicMaterial({ color: '#ffc27a' }));
+  flame.scale.set(1, 2.2, 1);
+  flame.position.y = 0.0475;
+  flame.userData.noAO = true;
+  const light = new THREE.PointLight('#ff9a4a', 0.12, 0.6, 2);
+  light.position.y = 0.06;
+  group.add(jar, wax, label, wick, flame, light);
+  const tick = (t: number) => {
+    const f = 0.85 + Math.sin(t * 11) * 0.06 + Math.sin(t * 23.7) * 0.05 + Math.sin(t * 5.3) * 0.04;
+    flame.scale.set(1, 2.2 * f, 1);
+    flame.position.x = Math.sin(t * 3.1) * 0.0006;
+    light.intensity = 0.12 * f;
+  };
+  return { group, tick };
+}
+
+// a puzzle cube, half solved, left lying about
+function buildCube() {
+  const g = new THREE.Group();
+  const s = 0.042;
+  const body = new THREE.Mesh(new RoundedBoxGeometry(s, s, s, 3, 0.004), std('#141416', 0.5));
+  body.position.y = s / 2;
+  g.add(body);
+  const cols = ['#f4f4f0', '#f2c14e', '#e8553d', '#ff8a3d', '#3d7bff', '#2a9a5e'];
+  const tile = new RoundedBoxGeometry(s / 3 - 0.0022, s / 3 - 0.0022, 0.0012, 2, 0.0005);
+  const mats = cols.map((c) => std(c, 0.35));
+  const faces: [THREE.Vector3, THREE.Euler, number][] = [
+    [new THREE.Vector3(0, 0, 1), new THREE.Euler(0, 0, 0), 4],
+    [new THREE.Vector3(1, 0, 0), new THREE.Euler(0, Math.PI / 2, 0), 2],
+    [new THREE.Vector3(-1, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0), 3],
+    [new THREE.Vector3(0, 0, -1), new THREE.Euler(0, Math.PI, 0), 5],
+    [new THREE.Vector3(0, 1, 0), new THREE.Euler(-Math.PI / 2, 0, 0), 0],
+  ];
+  let seed = 7;
+  const rand = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (const [n, rot, main] of faces) {
+    const u = new THREE.Vector3(1, 0, 0).applyEuler(rot);
+    const v = new THREE.Vector3(0, 1, 0).applyEuler(rot);
+    for (let i = -1; i <= 1; i++)
+      for (let j = -1; j <= 1; j++) {
+        const m = new THREE.Mesh(tile, mats[rand() < 0.55 ? main : Math.floor(rand() * 6)]);
+        m.rotation.copy(rot);
+        m.position.set(0, s / 2, 0).addScaledVector(n, s / 2 + 0.0004).addScaledVector(u, (i * s) / 3).addScaledVector(v, (j * s) / 3);
+        g.add(m);
+      }
+  }
+  return g;
 }
 
 // the picture in the frame on the desk: a sunset over hills, warm and soft
@@ -1184,28 +1626,31 @@ function buildStickies() {
   const g = new THREE.Group();
   const note = (text: string, colour: string, x: number, y: number, z: number, ry: number, rz: number) => {
     const c = document.createElement('canvas');
-    c.width = c.height = 160;
+    c.width = c.height = 512;
     const ctx = c.getContext('2d')!;
     ctx.fillStyle = colour;
-    ctx.fillRect(0, 0, 160, 160);
+    ctx.fillRect(0, 0, 512, 512);
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    ctx.fillRect(0, 0, 160, 22); // the sticky strip
+    ctx.fillRect(0, 0, 512, 70); // the sticky strip
     ctx.fillStyle = '#26262c';
-    ctx.font = `24px ${HAND}`;
-    text.split('\n').forEach((line, i) => ctx.fillText(line, 14, 58 + i * 30));
+    ctx.font = `78px ${HAND}`;
+    text.split('\n').forEach((line, i) => ctx.fillText(line, 44, 190 + i * 96));
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.06), std('#ffffff', 0.85, 0, { map: tex, side: THREE.DoubleSide }));
     m.position.set(x, y, z);
     m.rotation.set(0, ry, rz);
+    m.userData.interact = 'note';
+    m.userData.note = { text: text.replace(/\n/g, ' '), colour };
     g.add(m);
   };
-  // on the left wall, under the poster
+  // on the left wall, low, behind the picture frame
   note('call Ravi\nre: launch', '#ffe27a', -0.497, 0.19, -0.2, Math.PI / 2, 0.06);
   note('fix CLS\n/pricing', '#ff9fb2', -0.497, 0.17, -0.12, Math.PI / 2, -0.08);
   note('GSAP\nscroll hero', '#9fd3ff', -0.497, 0.11, -0.16, Math.PI / 2, 0.03);
-  // on the back wall by the window, and on the shelf's edge
-  note('ship v2 ✓', '#b8f0a0', 0.08, 0.26, WALL + 0.002, 0, -0.05);
+  // one more in the cluster, and one on the shelf's edge
+  note('ship v2 ✓', '#b8f0a0', -0.497, 0.13, -0.06, Math.PI / 2, -0.05);
   note('drink\nwater :)', '#ffe27a', 0.2, 0.425, WALL + 0.201, 0, 0.04);
   return g;
 }
@@ -1249,20 +1694,66 @@ function buildPrintout() {
   return grp;
 }
 
-// the phone, face down on the charging pad, its camera bump up
+// the phone, face up on the charging pad: a dim always-on lock screen; when it buzzes, a message lights it up
 function buildPhone() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new RoundedBoxGeometry(0.0716, 0.0078, 0.1476, 4, 0.006), std('#2b2d33', 0.35, 0.6));
   body.position.y = MAT + 0.006 + 0.0039;
-  const bump = new THREE.Mesh(new RoundedBoxGeometry(0.035, 0.002, 0.037, 3, 0.006), std('#25272c', 0.25, 0.7));
-  bump.position.set(-0.014, MAT + 0.006 + 0.0088, -0.05);
-  g.add(body, bump);
-  for (const [x, z] of [[-0.022, -0.06], [-0.006, -0.06], [-0.022, -0.042]]) {
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.0022, 20), std('#0d0d10', 0.15, 0.5));
-    lens.position.set(x + 0.008, MAT + 0.006 + 0.0098, z + 0.008);
-    g.add(lens);
-  }
-  return g;
+  g.add(body);
+  const c = document.createElement('canvas');
+  c.width = 240;
+  c.height = 500;
+  const ctx = c.getContext('2d')!;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const glass = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, color: new THREE.Color(0.35, 0.35, 0.35) });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.066, 0.142), glass);
+  screen.rotation.x = -Math.PI / 2;
+  screen.position.y = MAT + 0.006 + 0.0079;
+  g.add(screen);
+  const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' });
+  const draw = (message: { from: string; text: string } | null) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, 500);
+    sky.addColorStop(0, '#1c2048');
+    sky.addColorStop(1, '#6a3a5e');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 240, 500);
+    ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    ctx.beginPath();
+    ctx.roundRect(88, 14, 64, 18, 9); // the island
+    ctx.fill();
+    ctx.fillStyle = '#f3f0ff';
+    ctx.textAlign = 'center';
+    ctx.font = '600 64px "Avenir Next", Helvetica, sans-serif';
+    ctx.fillText(fmt.format(new Date()), 120, 130);
+    ctx.font = '16px "Avenir Next", Helvetica, sans-serif';
+    ctx.fillText('Bhopal', 120, 60);
+    if (message) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.roundRect(14, 170, 212, 70, 16);
+      ctx.fill();
+      ctx.fillStyle = '#1b1b22';
+      ctx.textAlign = 'left';
+      ctx.font = '600 15px "Avenir Next", Helvetica, sans-serif';
+      ctx.fillText(message.from, 30, 196);
+      ctx.font = '15px "Avenir Next", Helvetica, sans-serif';
+      ctx.fillText(message.text, 30, 222);
+    }
+    tex.needsUpdate = true;
+  };
+  draw(null);
+  setInterval(() => draw(null), 60_000);
+  return {
+    group: g,
+    // a message arrives: the screen lights up, then dims back down
+    notify(from = 'Client', text = 'can we ship today? 🙏') {
+      draw({ from, text });
+      gsap.killTweensOf(glass.color);
+      glass.color.setScalar(1);
+      gsap.to(glass.color, { r: 0.35, g: 0.35, b: 0.35, duration: 1.2, delay: 4, onComplete: () => draw(null) });
+    },
+  };
 }
 
 // the laptop's charging cable: out of its left side, across the mat, off the back of the desk and down
@@ -1400,11 +1891,14 @@ function buildKeyboard() {
     });
   });
   cap.castShadow = true;
+  cap.userData.interact = 'key';
   kase.add(cap);
+  const codes = keys.map(([code]) => code);
   const down = new THREE.Matrix4().makeTranslation(0, -0.0032, 0);
   const lit = new THREE.Color();
   return {
     group: g,
+    codeAt: (i: number) => codes[i],
     press(code: string, isDown: boolean) {
       const k = index.get(code);
       if (k === undefined) return;
@@ -1515,13 +2009,14 @@ function buildCharger() {
 // +x+z in the file; place() turns the whole thing. The studio backdrop and light panels it came with are dropped.
 function buildLamp(model: THREE.Object3D) {
   const group = new THREE.Group();
+  const cones: THREE.MeshStandardMaterial[] = [];
   const S = 0.056;
   ['Backdrop_0', 'LightPanels_0'].forEach((n) => model.getObjectByName(n)?.removeFromParent());
   model.traverse((o) => {
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (!m) return;
     // the inside of the cone glows with the bulb
-    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.8 });
+    if (/ConeINSIDE/i.test(m.name)) Object.assign(m, { emissive: new THREE.Color('#ffd7a0'), emissiveIntensity: 0.8 }), cones.push(m);
   });
   model.scale.setScalar(S);
   group.add(model);
@@ -1539,7 +2034,8 @@ function buildLamp(model: THREE.Object3D) {
   const spill = new THREE.PointLight('#ffa860', 0.9, 1.5, 1.4);
   spill.position.set(head.x - 0.02, head.y + 0.03, head.z - 0.05);
   group.add(spill);
-  return { group };
+  group.userData.interact = 'lamp';
+  return { group, beam, spill, cones };
 }
 
 /* ---------- a pixel LED clock, showing Bhopal time ---------- */
@@ -1579,7 +2075,9 @@ function buildPixelClock() {
   const face = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.92, h * 0.84), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
   face.position.set(0, h / 2 + 0.004, d / 2 + 0.0005);
   group.add(face);
-  const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' });
+  let h12 = false;
+  const makeFmt = () => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: h12 ? 'h12' : 'h23', timeZone: 'Asia/Kolkata' });
+  let fmt = makeFmt();
   let shown = '';
   const draw = (text: string, colon: boolean) => {
     const cw = c.width / cols;
@@ -1620,6 +2118,12 @@ function buildPixelClock() {
       if (key === shown) return;
       shown = key;
       draw(text, colon);
+    },
+    toggle12h() {
+      h12 = !h12;
+      fmt = makeFmt();
+      shown = '';
+      return h12;
     },
   };
 }
@@ -1710,6 +2214,8 @@ function buildMug() {
   }
   return {
     group: g,
+    coffee,
+    wisps,
     tick(t: number, cam: THREE.Camera) {
       steamU.uTime.value = t;
       wisps.forEach((w) => {
@@ -1755,87 +2261,125 @@ function buildSucculent(opts: { leaf?: string; rings?: number[]; twist?: number 
   return g;
 }
 
-/* ---------- wired EarPods (USB-C), unplugged, lying loose on the mat ---------- */
+/* ---------- an AirPods Pro case, standing on the mat; a click flips its lid open on the two buds ---------- */
 
-// built in world coordinates, on the mat (top at y = MAT) to the right of the palm rest
-function buildEarPods() {
-  const g = new THREE.Group();
-  const white = new THREE.MeshPhysicalMaterial({ color: '#fbfbf8', roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.25 });
-  const dark = std('#2a2b2f', 0.55, 0.4);
-  const metal = std('#c8ccd2', 0.25, 0.95);
-  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-  const Y = MAT + 0.0008; // a cable's centre, lying on the mat
-  const cable = (pts: THREE.Vector3[]) =>
-    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), 220, 0.0008, 8), white));
-  // an object whose local +y runs from a to b (stems, the remote, the plug)
-  const along = (o: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3) => {
-    const d = b.clone().sub(a);
-    o.position.copy(a).addScaledVector(d, 0.5);
-    o.quaternion.setFromUnitVectors(V(0, 1, 0), d.normalize());
-    g.add(o);
-    return o;
-  };
+function buildAirPods() {
+  const group = new THREE.Group();
+  // the case's real size (60.6 x 45.2 x 21.7 mm): a pebble, its edges rounded all the way to the faces
+  const w = 0.0606;
+  const h = 0.0452;
+  const d = 0.0217;
+  const bv = 0.0095; // the edge rounding
+  const rr = 0.0075; // the front's corners, inside the rounding
+  const seam = 0.0318; // where the lid meets the body, from the bottom
+  const sw = w / 2 - bv;
+  const sh = h / 2 - bv;
+  const outline = new THREE.Shape();
+  outline.moveTo(-sw + rr, -sh);
+  outline.lineTo(sw - rr, -sh);
+  outline.quadraticCurveTo(sw, -sh, sw, -sh + rr);
+  outline.lineTo(sw, sh - rr);
+  outline.quadraticCurveTo(sw, sh, sw - rr, sh);
+  outline.lineTo(-sw + rr, sh);
+  outline.quadraticCurveTo(-sw, sh, -sw, sh - rr);
+  outline.lineTo(-sw, -sh + rr);
+  outline.quadraticCurveTo(-sw, -sh, -sw + rr, -sh);
+  const shell = new THREE.ExtrudeGeometry(outline, { depth: d - 2 * bv, bevelEnabled: true, bevelThickness: bv, bevelSize: bv, bevelSegments: 12, curveSegments: 20 });
+  shell.center();
+  shell.translate(0, h / 2, 0);
+  // one smooth surface: the extrusion's rings share their vertices, so its rounding shades without steps
+  shell.deleteAttribute('normal');
+  shell.deleteAttribute('uv');
+  const smooth = mergeVertices(shell, 1e-6);
+  smooth.computeVertexNormals();
 
-  // a bud lying on its side: the stem along the mat, the round head at its end, its grille facing up and in
-  const bud = (stemBase: THREE.Vector3, dir: THREE.Vector3, roll: number) => {
-    dir.normalize();
-    const stemTop = stemBase.clone().addScaledVector(dir, 0.024);
-    along(new THREE.Mesh(new THREE.CapsuleGeometry(0.0029, 0.022, 8, 16), white), stemBase, stemTop);
-    // a thin seam ring near the stem's foot
-    along(new THREE.Mesh(new THREE.CylinderGeometry(0.00295, 0.00295, 0.0004, 16), std('#c9c9c6', 0.5)), stemBase.clone().addScaledVector(dir, 0.004), stemBase.clone().addScaledVector(dir, 0.0044));
-    const head = new THREE.Group();
-    head.position.copy(stemTop).addScaledVector(dir, 0.0062);
-    head.position.y = MAT + 0.0078;
-    head.quaternion.setFromUnitVectors(V(0, 1, 0), dir);
-    head.rotateY(roll);
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.0086, 32, 24), white);
-    shell.scale.set(1, 1.08, 0.94);
-    head.add(shell);
-    // the speaker grille: a dark oval set into the inner face; a small vent slot on the outer face
-    const grille = new THREE.Mesh(new THREE.CircleGeometry(0.0034, 24), dark);
-    grille.scale.set(1, 0.42, 1);
-    grille.position.set(0, 0.0022, 0.0079);
-    grille.rotation.x = -0.25;
-    const vent = new THREE.Mesh(new THREE.PlaneGeometry(0.0006, 0.0022), dark);
-    vent.position.set(0, 0.002, -0.0081);
-    vent.rotation.y = Math.PI;
-    head.add(grille, vent);
-    g.add(head);
-    return stemBase;
-  };
+  const gloss = () =>
+    new THREE.MeshPhysicalMaterial({ color: '#f7f7f4', roughness: 0.28, clearcoat: 0.7, clearcoatRoughness: 0.2, clipShadows: true });
+  // one shell, drawn twice and cut at the seam: below it the body, above it the lid, a hair apart so the seam
+  // shows as a fine dark line (the shell's inside is drawn dark)
+  const bodyPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), seam - 0.0002);
+  const lidPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(seam + 0.0002));
+  const bodyMat = gloss();
+  const lidMat = gloss();
+  const shade = () => new THREE.MeshStandardMaterial({ color: '#1b1b1d', roughness: 0.9, side: THREE.BackSide, clipShadows: true });
+  const bodyIn = shade();
+  const lidIn = shade();
+  bodyMat.clippingPlanes = bodyIn.clippingPlanes = [bodyPlane.clone()];
+  lidMat.clippingPlanes = lidIn.clippingPlanes = [lidPlane.clone()];
+  const body = new THREE.Mesh(smooth, bodyMat);
+  body.add(new THREE.Mesh(smooth, bodyIn));
+  group.add(body);
 
-  // the main cable lies in a loose coil, two rings winding inward, the plug resting at its inner end
-  const C = V(0.262, Y, 0.06);
-  const turns = 1.8;
-  const coil: THREE.Vector3[] = [];
-  for (let i = 0; i <= 90; i++) {
-    const f = i / 90;
-    const a = f * turns * Math.PI * 2 + 0.3;
-    const r = 0.033 - 0.011 * f + Math.sin(a * 3.0) * 0.0015;
-    // where the inner ring crosses back over the outer one it rides up on it
-    coil.push(V(C.x + Math.cos(a) * r * 1.18, Y + (f > 0.5 ? 0.0013 : 0), C.z + Math.sin(a) * r));
+  // the inside, seen with the lid up: a pale floor with the two buds' heads sitting in their wells
+  const inner = new THREE.Shape();
+  const iw = w / 2 - 0.0012;
+  const id = d / 2 - 0.0012;
+  const ir = id - 0.0005;
+  inner.moveTo(-iw + ir, -id);
+  inner.lineTo(iw - ir, -id);
+  inner.absarc(iw - ir, -id + ir, ir, -Math.PI / 2, 0, false);
+  inner.lineTo(iw, id - ir);
+  inner.absarc(iw - ir, id - ir, ir, 0, Math.PI / 2, false);
+  inner.lineTo(-iw + ir, id);
+  inner.absarc(-iw + ir, id - ir, ir, Math.PI / 2, Math.PI, false);
+  inner.lineTo(-iw, -id + ir);
+  inner.absarc(-iw + ir, -id + ir, ir, Math.PI, Math.PI * 1.5, false);
+  const pale = std('#e4e4e0', 0.6);
+  const floor = new THREE.Mesh(new THREE.ShapeGeometry(inner, 16), pale);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = seam - 0.0006;
+  group.add(floor);
+  const well = std('#26262a', 0.7);
+  const bud = new THREE.MeshPhysicalMaterial({ color: '#fbfbf8', roughness: 0.3, clearcoat: 0.6 });
+  for (const s of [-1, 1]) {
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.0082, 28), well);
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.set(s * 0.0128, seam - 0.0004, 0.0008);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.0072, 28, 20), bud);
+    head.scale.set(1, 0.62, 1.05);
+    head.position.set(s * 0.0128, seam - 0.0012, 0.0008);
+    // the dark speaker mesh on each bud, facing up and in
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.0024, 20), well);
+    mesh.position.set(s * 0.0122, seam + 0.0036, 0.0002);
+    mesh.rotation.set(-Math.PI / 2 + 0.35, 0, s * 0.3);
+    group.add(hole, head, mesh);
   }
-  const coilStart = coil[0];
-  const split = V(coilStart.x - 0.004, Y, coilStart.z + 0.03);
-  cable([split, V(split.x + 0.003, Y, split.z - 0.014), coilStart, ...coil.slice(1)]);
-  along(new THREE.Mesh(new THREE.CylinderGeometry(0.0017, 0.0017, 0.007, 14), white), split.clone().add(V(0, 0.0006, -0.0035)), split.clone().add(V(-0.001, 0.0006, 0.0035)));
-  // the two buds rest side by side in front of the coil; the right cable carries the remote
-  const left = bud(V(0.224, Y + 0.002, 0.118), V(-0.55, 0, 0.84), Math.PI * 0.55);
-  const right = bud(V(0.246, Y + 0.002, 0.124), V(-0.2, 0, 1), -Math.PI * 0.45);
-  cable([split, V(split.x - 0.012, Y, split.z + 0.008), V(0.236, Y, 0.108), V(0.229, Y, 0.112), left]);
-  const remoteA = V(split.x - 0.004, Y + 0.0014, split.z + 0.009);
-  const remoteB = V(split.x - 0.006, Y + 0.0014, split.z + 0.024);
-  cable([split, V(split.x - 0.003, Y, split.z + 0.004), remoteA]);
-  along(new THREE.Mesh(new THREE.CapsuleGeometry(0.0024, 0.013, 8, 14), white), remoteA, remoteB);
-  cable([remoteB, V(remoteB.x - 0.001, Y, remoteB.z + 0.008), V(0.249, Y, 0.118), right]);
-  // the USB-C plug, lying at the coil's inner end, pointing on along the cable
-  const endP = coil[coil.length - 1];
-  const plugDir = endP.clone().sub(coil[coil.length - 3]).setY(0).normalize();
-  const p0 = endP.clone().setY(MAT + 0.0026);
-  const plugBody = along(new THREE.Mesh(new RoundedBoxGeometry(0.0082, 0.02, 0.0052, 4, 0.0022), white), p0, p0.clone().addScaledVector(plugDir, 0.02));
-  plugBody.rotateY(Math.PI / 2);
-  const tipStart = p0.clone().addScaledVector(plugDir, 0.02);
-  const tip = along(new THREE.Mesh(new RoundedBoxGeometry(0.0083, 0.0066, 0.0025, 3, 0.0011), metal), tipStart, tipStart.clone().addScaledVector(plugDir, 0.0066));
-  tip.rotateY(Math.PI / 2);
-  return g;
+
+  // the lid hinges at the back, along the seam
+  const hinge = new THREE.Group();
+  hinge.position.set(0, seam, -d / 2 + 0.0015);
+  group.add(hinge);
+  const lid = new THREE.Mesh(smooth, lidMat);
+  lid.add(new THREE.Mesh(smooth, lidIn));
+  lid.position.set(0, -seam, d / 2 - 0.0015);
+  hinge.add(lid);
+  const lidInner = new THREE.Mesh(new THREE.ShapeGeometry(inner, 16), pale);
+  lidInner.rotation.x = Math.PI / 2;
+  lidInner.position.set(0, 0.0004, d / 2 - 0.0015);
+  hinge.add(lidInner);
+
+  // the status light, on the front below the seam: dark, until the lid opens
+  const led = new THREE.Mesh(new THREE.CircleGeometry(0.00085, 16), new THREE.MeshBasicMaterial({ color: '#2b2b2b', toneMapped: false }));
+  led.position.set(0, seam - 0.0115, d / 2 + 0.00015);
+  group.add(led);
+  const off = new THREE.Color('#2b2b2b');
+  const on = new THREE.Color('#3dff86');
+
+  group.userData.interact = 'airpods';
+  group.traverse((o) => {
+    // the cut shell isn't solid for the occlusion pass, which can't see the cut: keep it out, but clickable
+    o.userData.noAO = true;
+    o.userData.pickable = true;
+  });
+
+  const state = { open: 0 };
+  // the planes are in world space: they follow the case where it's placed, the lid's one follows the lid
+  const sync = () => {
+    hinge.rotation.x = -1.85 * state.open;
+    group.updateMatrixWorld(true);
+    bodyMat.clippingPlanes![0].copy(bodyPlane).applyMatrix4(body.matrixWorld);
+    lidMat.clippingPlanes![0].copy(lidPlane).applyMatrix4(lid.matrixWorld);
+    (led.material as THREE.MeshBasicMaterial).color.lerpColors(off, on, Math.min(1, state.open * 1.6));
+  };
+  return { group, state, sync };
 }
